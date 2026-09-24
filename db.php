@@ -25,9 +25,13 @@ function db(): PDO
     }
     parse_str($p['query'] ?? '', $q);
 
+    // Conexão direta (sem "-pooler") e ID do endpoint enviado manualmente
+    $host = str_replace('-pooler', '', $p['host']);
+    $endpoint = explode('.', $host)[0];
+
     $dsn = sprintf(
-        'pgsql:host=%s;port=%d;dbname=%s;sslmode=%s',
-        $p['host'], $p['port'] ?? 5432, ltrim($p['path'] ?? '/neondb', '/'), $q['sslmode'] ?? 'require'
+        "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='endpoint=%s'",
+        $host, $p['port'] ?? 5432, ltrim($p['path'] ?? '/neondb', '/'), $q['sslmode'] ?? 'require', $endpoint
     );
     $pdo = new PDO($dsn, urldecode($p['user'] ?? ''), urldecode($p['pass'] ?? ''), [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,

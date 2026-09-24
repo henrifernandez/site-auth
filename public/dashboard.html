@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Site Auth</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 600px;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .welcome {
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+
+        .info-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-box p {
+            color: #666;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        .info-box strong {
+            color: #333;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .logout-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            margin-top: 20px;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .error {
+            background-color: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+
+        .success {
+            background-color: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bem-vindo!</h1>
+        <div class="welcome" id="welcome"></div>
+        
+        <div class="message" id="message"></div>
+
+        <div class="info-box">
+            <p><strong>Email:</strong> <span id="email"></span></p>
+            <p><strong>Data de Cadastro:</strong> <span id="created_at"></span></p>
+            <p><strong>Status:</strong> <span style="color: #3c3; font-weight: bold;">Autenticado ✓</span></p>
+        </div>
+
+        <button onclick="logout()">Sair da Conta</button>
+    </div>
+
+    <script>
+        // Recuperar dados da sessão do localStorage
+        const userEmail = localStorage.getItem('user_email');
+        
+        if (!userEmail) {
+            // Se não estiver autenticado, redirecionar para login
+            window.location.href = '/';
+        } else {
+            // Exibir dados do usuário
+            document.getElementById('welcome').textContent = `Olá, ${userEmail}!`;
+            document.getElementById('email').textContent = userEmail;
+            
+            // Data atual formatada
+            const today = new Date().toLocaleDateString('pt-BR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            document.getElementById('created_at').textContent = today;
+        }
+
+        function logout() {
+            // Limpar dados da sessão
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_id');
+            
+            // Redirecionar para login
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Site Auth - Login</title>
+    <title>Site Auth - Login & Cadastro</title>
     <style>
         * {
             margin: 0;
@@ -18,6 +18,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
         .container {
@@ -87,39 +88,76 @@
             transform: translateY(0);
         }
 
-        .signup-link {
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .toggle-link {
             text-align: center;
             margin-top: 20px;
             color: #666;
             font-size: 14px;
         }
 
-        .signup-link a {
+        .toggle-link a {
             color: #667eea;
             text-decoration: none;
             font-weight: 600;
+            cursor: pointer;
         }
 
-        .signup-link a:hover {
+        .toggle-link a:hover {
             text-decoration: underline;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+            font-size: 14px;
         }
 
         .error {
             background-color: #fee;
             color: #c33;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            display: none;
+            border: 1px solid #fcc;
         }
 
         .success {
             background-color: #efe;
             color: #3c3;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+            border: 1px solid #cfc;
+        }
+
+        .form {
             display: none;
+        }
+
+        .form.active {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -127,15 +165,19 @@
     <div class="container">
         <h1>Site Auth</h1>
         
-        <div class="error" id="error"></div>
-        <div class="success" id="success"></div>
+        <div class="message" id="message"></div>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando...</p>
+        </div>
 
-        <form id="loginForm">
+        <!-- Formulário de Login -->
+        <form id="loginForm" class="form active">
             <div class="form-group">
-                <label for="email">Email</label>
+                <label for="login-email">Email</label>
                 <input 
                     type="email" 
-                    id="email" 
+                    id="login-email" 
                     name="email" 
                     placeholder="seu@email.com" 
                     required
@@ -143,10 +185,10 @@
             </div>
 
             <div class="form-group">
-                <label for="password">Senha</label>
+                <label for="login-password">Senha</label>
                 <input 
                     type="password" 
-                    id="password" 
+                    id="login-password" 
                     name="password" 
                     placeholder="Sua senha" 
                     required
@@ -156,34 +198,169 @@
             <button type="submit">Entrar</button>
         </form>
 
-        <div class="signup-link">
-            Não tem conta? <a href="#signup">Cadastre-se aqui</a>
+        <!-- Formulário de Cadastro -->
+        <form id="signupForm" class="form">
+            <div class="form-group">
+                <label for="signup-email">Email</label>
+                <input 
+                    type="email" 
+                    id="signup-email" 
+                    name="email" 
+                    placeholder="seu@email.com" 
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="signup-password">Senha</label>
+                <input 
+                    type="password" 
+                    id="signup-password" 
+                    name="password" 
+                    placeholder="Mínimo 6 caracteres" 
+                    minlength="6"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="signup-confirm">Confirmar Senha</label>
+                <input 
+                    type="password" 
+                    id="signup-confirm" 
+                    name="confirm_password" 
+                    placeholder="Repita sua senha" 
+                    required
+                >
+            </div>
+
+            <button type="submit">Cadastrar</button>
+        </form>
+
+        <!-- Links de Toggle -->
+        <div class="toggle-link" id="toggleLink">
+            Não tem conta? <a onclick="toggleForms()">Cadastre-se aqui</a>
         </div>
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        const messageDiv = document.getElementById('message');
+        const loadingDiv = document.getElementById('loading');
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const toggleLink = document.getElementById('toggleLink');
+
+        function toggleForms() {
+            loginForm.classList.toggle('active');
+            signupForm.classList.toggle('active');
+            
+            if (loginForm.classList.contains('active')) {
+                toggleLink.innerHTML = 'Não tem conta? <a onclick="toggleForms()">Cadastre-se aqui</a>';
+            } else {
+                toggleLink.innerHTML = 'Já tem conta? <a onclick="toggleForms()">Faça login aqui</a>';
+            }
+            
+            clearMessage();
+        }
+
+        function showMessage(text, type) {
+            messageDiv.textContent = text;
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+        }
+
+        function clearMessage() {
+            messageDiv.style.display = 'none';
+        }
+
+        function showLoading(show) {
+            loadingDiv.style.display = show ? 'block' : 'none';
+        }
+
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
-            const successDiv = document.getElementById('success');
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value.trim();
 
-            // Validação básica
             if (!email || !password) {
-                errorDiv.textContent = 'Por favor, preencha todos os campos!';
-                errorDiv.style.display = 'block';
-                successDiv.style.display = 'none';
+                showMessage('Preencha todos os campos!', 'error');
                 return;
             }
 
-            // Simulação de sucesso
-            successDiv.textContent = 'Login realizado com sucesso!';
-            successDiv.style.display = 'block';
-            errorDiv.style.display = 'none';
+            showLoading(true);
+            clearMessage();
+
+            try {
+                const response = await fetch('/api.php?action=login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('✓ ' + data.message, 'success');
+                    localStorage.setItem('user_email', email);
+                    localStorage.setItem('user_id', data.user_id);
+                    loginForm.reset();
+                    setTimeout(() => {
+                        window.location.href = '/dashboard.html';
+                    }, 1500);
+                } else {
+                    showMessage('✗ ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Erro na requisição: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            console.log('Tentativa de login:', { email, password });
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value.trim();
+            const confirm_password = document.getElementById('signup-confirm').value.trim();
+
+            if (!email || !password || !confirm_password) {
+                showMessage('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            if (password !== confirm_password) {
+                showMessage('As senhas não coincidem!', 'error');
+                return;
+            }
+
+            showLoading(true);
+            clearMessage();
+
+            try {
+                const response = await fetch('/api.php?action=signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, confirm_password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('✓ ' + data.message, 'success');
+                    signupForm.reset();
+                    setTimeout(() => {
+                        toggleForms();
+                    }, 2000);
+                } else {
+                    showMessage('✗ ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Erro na requisição: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
         });
     </script>
 </body>

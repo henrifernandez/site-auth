@@ -17,11 +17,13 @@ Sistema de autenticação completo com cadastro e login usando PHP, PostgreSQL e
 
 1. Acesse o painel do Neon em https://console.neon.tech
 2. Copie a `DATABASE_URL` do seu projeto
-3. Cole no arquivo `.env`:
+3. Copie o arquivo `.env.example` para `.env` e cole a string no lugar do exemplo:
 
 ```env
 DATABASE_URL=postgresql://seu_usuario:sua_senha@ep-xxxx.neon.tech/dbname?sslmode=require&channel_binding=require
 ```
+
+O `.env` fica fora do git por causa do `.gitignore`. Nunca envie esse arquivo ao GitHub, porque ele guarda a senha do banco.
 
 ### 2. Executar Script SQL
 

@@ -1,0 +1,22 @@
+{
+  "functions": {
+    "api/index.php": {
+      "runtime": "vercel-php@0.8.0"
+    }
+  },
+  "routes": [
+    { "src": "/(src|templates|migrations|bin|tests|vendor|docs|\\.github|\\.git)(/.*)?", "status": 404 },
+    { "src": "/(composer\\.(json|lock)|phpunit\\.xml\\.dist|phpstan\\.neon\\.dist|\\.php-cs-fixer\\.dist\\.php|router\\.php|init\\.sql|\\.env[^/]*|\\.gitignore|\\.gitattributes|\\.vercelignore|package(-lock)?\\.json)", "status": 404 },
+    { "src": "/api(/.*)?", "status": 404 },
+    {
+      "src": "/assets/(.*)",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "public, max-age=3600"
+      },
+      "continue": true
+    },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/index.php" }
+  ]
+}

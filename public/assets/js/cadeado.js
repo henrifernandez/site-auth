@@ -104,7 +104,7 @@ function argolaEmWireframe(THREE, material, raio) {
     const arco = new THREE.TorusGeometry(raio, 0.09, 6, 22, PI);
     grupo.add(new THREE.LineSegments(new THREE.EdgesGeometry(arco, 1), material));
 
-    const comprimento = 0.6;
+    const comprimento = 0.45;
     for (const x of [-raio, raio]) {
         const perna = new THREE.CylinderGeometry(0.09, 0.09, comprimento, 6, 1, true);
         perna.translate(x, -comprimento / 2, 0);
@@ -249,8 +249,8 @@ export function criarCadeado(THREE, contenedor, opcoes = {}) {
     }
 
     function aplicarAbertura(valor) {
-        pivo.position.y = 0.85 + valor * 0.46;
-        pivo.rotation.y = -valor * 1.25;
+        pivo.position.y = 0.85 + valor * 0.55;
+        pivo.rotation.y = -valor * 0.6;
     }
 
     function redimensionar(largura, altura) {
@@ -262,8 +262,10 @@ export function criarCadeado(THREE, contenedor, opcoes = {}) {
         const tg = Math.tan((camera.fov * PI) / 360);
         // Cabe a casca de partículas na largura e na altura.
         const meiaLargura = 3.3 * raioParticulas + 0.3;
-        const meiaAltura = 2.7 * raioParticulas + 0.3;
-        camera.position.set(0, 0, Math.max(meiaLargura / (tg * camera.aspect), meiaAltura / tg));
+        // A argola aberta sobe acima do corpo: o centro da cena fica um pouco acima do corpo.
+        const meiaAltura = Math.max(2.7 * raioParticulas + 0.3, 1.9);
+        camera.position.set(0, 0.4, Math.max(meiaLargura / (tg * camera.aspect), meiaAltura / tg));
+        camera.lookAt(0, 0.4, 0);
         camera.updateProjectionMatrix();
     }
 

@@ -23,7 +23,9 @@ if (preg_match($bloqueado, $caminho) === 1) {
     return true;
 }
 
-$arquivo = $caminho === '/' ? false : realpath(__DIR__ . '/public' . $caminho);
+// Pasta com index.html (a prévia em /previa/) abre o índice, como um servidor de arquivos faria.
+$indice = $caminho !== '/' && str_ends_with($caminho, '/') ? realpath(__DIR__ . '/public' . $caminho . 'index.html') : false;
+$arquivo = $caminho === '/' ? false : ($indice !== false ? $indice : realpath(__DIR__ . '/public' . $caminho));
 $raizPublica = realpath(__DIR__ . '/public');
 $extensao = $arquivo === false ? '' : strtolower(pathinfo($arquivo, PATHINFO_EXTENSION));
 
@@ -35,6 +37,7 @@ if (
     && $extensao !== 'php'
 ) {
     $tipos = [
+        'html' => 'text/html; charset=utf-8',
         'css' => 'text/css; charset=utf-8',
         'js' => 'text/javascript; charset=utf-8',
         'mjs' => 'text/javascript; charset=utf-8',

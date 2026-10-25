@@ -1,0 +1,122 @@
+/* Prévia da cena "fechadura de anéis". Nada daqui vai para o app: o painel existe só na prévia. */
+
+/* Estilos da cena que, na integração, passam para o app.css. */
+
+/* SVG de reserva (sem WebGL, sem JavaScript ou com movimento reduzido): ocupa a área da cena. */
+#cena .aneis-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Única mudança de layout da etapa 2, pendente de aprovação: a coluna de marca fica fixa ao
+   rolar a /conta, para a cena não sair da tela. */
+@media (min-width: 821px) {
+  .conta .marca {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: start;
+  }
+}
+
+/* Painel de controle da prévia: fixo embaixo da coluna do formulário, sem cobrir a cena. */
+body.previa .principal {
+  padding-bottom: 240px;
+}
+
+.painel {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  width: calc(100vw - var(--marca-largura, 50vw));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 10px 16px 12px;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 18px rgba(16, 35, 58, 0.08);
+  color: var(--ink);
+  font: 600 0.78rem/1.3 Manrope, system-ui, sans-serif;
+}
+
+.painel-titulo {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.painel-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.painel-rotulo {
+  min-width: 64px;
+  color: var(--muted);
+}
+
+.painel button {
+  min-height: 28px;
+  padding: 2px 9px;
+  border: 1px solid var(--campo);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.painel button:hover {
+  background: var(--bg);
+}
+
+.painel button[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.painel input[type="range"] {
+  width: 150px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--teal-d);
+}
+
+.painel output {
+  min-width: 112px;
+  font-variant-numeric: tabular-nums;
+}
+
+.painel-medidas {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.painel-aviso {
+  color: var(--teal-dd);
+}
+
+@media (max-width: 820px) {
+  .painel {
+    width: 100vw;
+  }
+
+  body.previa .principal {
+    padding-bottom: 300px;
+  }
+}

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SiteAuth;
 
 use SiteAuth\Controladores\AuthControlador;
+use SiteAuth\Controladores\ContaControlador;
 use SiteAuth\Controladores\RecuperacaoControlador;
 use SiteAuth\Controladores\VerificacaoControlador;
 use SiteAuth\Mail\LogMailer;
@@ -51,6 +52,7 @@ final class App
         $auth = new AuthControlador($s, $requisicao, $sessao);
         $recuperacao = new RecuperacaoControlador($s, $requisicao, $sessao);
         $verificacao = new VerificacaoControlador($s, $requisicao, $sessao);
+        $conta = new ContaControlador($s, $requisicao, $sessao);
 
         $roteador = new Router(
             fn(Request $r): Response => $this->paginaDeErro(404, 'Página não encontrada', 'O endereço que você abriu não existe ou foi movido.'),
@@ -71,6 +73,12 @@ final class App
         $roteador->adicionar('GET', '/verificar-email', $verificacao->confirmarForm(...));
         $roteador->adicionar('POST', '/verificar-email', $verificacao->confirmar(...));
         $roteador->adicionar('POST', '/reenviar-verificacao', $verificacao->reenviar(...));
+        $roteador->adicionar('GET', '/conta', $conta->ver(...));
+        $roteador->adicionar('POST', '/conta/nome', $conta->alterarNome(...));
+        $roteador->adicionar('POST', '/conta/senha', $conta->alterarSenha(...));
+        $roteador->adicionar('POST', '/conta/sessoes/encerrar', $conta->encerrarSessao(...));
+        $roteador->adicionar('POST', '/conta/sessoes/encerrar-todas', $conta->encerrarTodas(...));
+        $roteador->adicionar('POST', '/conta/excluir', $conta->excluir(...));
 
         return $roteador;
     }

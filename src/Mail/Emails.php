@@ -59,6 +59,19 @@ final class Emails
         return new Email($para, 'Sua senha foi alterada', $texto, $html);
     }
 
+    public static function contaExcluida(string $nome, string $para, string $quando): Email
+    {
+        $texto = "Olá, {$nome}.\n\n"
+            . "Sua conta foi excluída em {$quando}, junto com os dados ligados a ela.\n\n"
+            . "Se você não fez isso, responda a este e-mail ou entre em contato com quem mantém o site.\n";
+
+        $html = '<p>Olá, ' . self::e($nome) . '.</p>'
+            . '<p>Sua conta foi excluída em ' . self::e($quando) . ', junto com os dados ligados a ela.</p>'
+            . '<p>Se você não fez isso, responda a este e-mail ou entre em contato com quem mantém o site.</p>';
+
+        return new Email($para, 'Sua conta foi excluída', $texto, $html);
+    }
+
     private static function e(string $texto): string
     {
         return htmlspecialchars($texto, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

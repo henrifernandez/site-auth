@@ -13,6 +13,7 @@ O projeto passou por uma reforma. A versão anterior tinha duas telas concorrent
 - Limite de tentativas guardado no Postgres (login, recuperação, reenvio de verificação, cadastro, senha atual).
 - Cabeçalhos de segurança e CSP sem nada inline; fonte Manrope servida localmente.
 - Acessibilidade pensada para WCAG 2.2 AA, com teste estrutural em PHP e teste com axe-core no CI.
+- Cena de cadeado em three.js na coluna de marca e animação de desbloqueio na área da conta, com SVG de reserva (veja "Animação do cadeado").
 
 ## Fluxo de autenticação
 
@@ -60,7 +61,7 @@ src/                     namespace SiteAuth (PSR-4)
   Mail/                  Mailer, LogMailer, ResendMailer, BrevoMailer, modelos em português
   Migrador.php           migrações reversíveis
 templates/               HTML com escape (layout e uma página por tela)
-public/assets/           css, js e fonts (únicos arquivos servidos como estáticos)
+public/assets/           css, js, fonts e vendor/three (únicos arquivos servidos como estáticos)
 migrations/              0001_base e 0002_usuarios_verificacao, cada uma com .up.sql e .down.sql
 bin/migrar.php           up | down | status
 router.php               servidor de desenvolvimento (php -S)
@@ -128,6 +129,23 @@ Em produção (`VERCEL_ENV=production` ou `APP_ENV=production`), o `LogMailer` r
 - Variáveis em Settings > Environment Variables: `DATABASE_URL`, `APP_URL`, `MAIL_PROVIDER`, `MAIL_API_KEY`, `MAIL_FROM`.
 - Rode as migrações antes de publicar uma versão que mude o esquema.
 - O deploy funciona sem `vendor/`: `api/index.php` tem um autoloader próprio de poucas linhas. Se houver `composer.json`, o runtime roda `composer install`; não há dependências de produção.
+
+## Animação do cadeado
+
+Dois lugares ganharam uma cena em three.js (wireframe, nas cores da identidade), sem mudar textos, cores nem layout das páginas:
+
+- **Coluna de marca** (entrar, criar conta, esqueci a senha, redefinir): um cadeado flutua devagar, com partículas finas e um halo suave, e acompanha o mouse com parallax leve (só com mouse). A argola desce e o cadeado se fecha quando o campo de senha recebe o foco, e volta ao repouso quando ele perde. Se a página recarrega com erro, o cadeado dá uma sacudida curta (cerca de 400 ms) com um brilho vermelho suave que volta ao normal. Nada reage a teclas, para não revelar o tamanho da senha a quem olha a tela.
+- **Área da conta**: na primeira carga de `/conta` depois de um login, a argola sobe e abre em cerca de 1,2 s, as partículas se expandem e se dissipam e o texto de boas-vindas surge. O servidor grava um sinal de uso único na sessão no login e o consome na renderização; recarregar mostra só o cadeado aberto, calmo (um SVG, sem three.js). Se o modal "Login realizado com sucesso!" estiver aberto, a animação espera ele fechar.
+
+Arquivos: `public/assets/js/cena.js` (decide, carrega e cuida do ciclo de vida), `public/assets/js/cadeado.js` (a cena) e `public/assets/vendor/three/` (three.js 0.186.1, MIT, copiado do projeto irmão API-TESTE; origem e versão em `VERSION.txt`). Tudo é servido de `/assets`, sem CDN e sem script inline, então a CSP continua `script-src 'self'`.
+
+Cuidados de acessibilidade e de desempenho:
+
+- O canvas é decorativo (`aria-hidden`), nunca recebe foco e a animação não mexe no foco do teclado. Erros e confirmações continuam sendo anunciados pelos textos da página (`role="alert"` no resumo de erros), não pela cena.
+- Com `prefers-reduced-motion`, sem WebGL (teste em `try/catch`), com falha ao carregar o módulo ou com pouco espaço (celular e janelas baixas) o three.js nem é baixado: fica o SVG estático (cadeado fechado no login, aberto na conta). Sem JavaScript, o SVG também aparece.
+- O botão "Pausar animação" / "Retomar animação" (WCAG 2.2.2) fica visível e operável por teclado enquanto houver animação contínua. Pausar libera geometrias, materiais e o renderer e mostra o SVG; a cena também para quando a aba fica oculta.
+- Nada pisca mais de 3 vezes por segundo; o brilho de erro cobre uma área pequena, com opacidade baixa, e não há flash de tela cheia. O canvas fica acima do texto da coluna de marca, nunca por baixo dele, então o contraste do texto não depende da cena.
+- `devicePixelRatio` limitado a 2, no máximo 300 partículas (usa 160 no login e 120 na conta) e carregamento do three.js por `import()` dinâmico, em tempo ocioso, depois que o formulário já está utilizável.
 
 ## Segurança
 

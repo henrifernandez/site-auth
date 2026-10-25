@@ -1,0 +1,9 @@
+parameters:
+    level: 6
+    paths:
+        - src
+        - api
+        - bin
+        - templates
+        - router.php
+        - tests

@@ -3,6 +3,12 @@
 .env.*
 !.env.example
 
+# Dependências e caches
+/vendor/
+node_modules/
+.phpunit.cache/
+.php-cs-fixer.cache
+
 # Sistema e editores
 .DS_Store
 Thumbs.db

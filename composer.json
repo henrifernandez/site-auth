@@ -1,0 +1,41 @@
+{
+    "name": "henrifernandez/site-auth",
+    "description": "Cadastro, login e área da conta em PHP 8.4 e PostgreSQL, com sessões no banco e recuperação de senha.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4",
+        "ext-curl": "*",
+        "ext-mbstring": "*",
+        "ext-pdo": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "SiteAuth\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SiteAuth\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "lint": "php-cs-fixer fix --dry-run --diff --using-cache=no",
+        "stan": "phpstan analyse --memory-limit=512M",
+        "check": [
+            "@lint",
+            "@stan",
+            "@test"
+        ]
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpstan/phpstan": "^2.3",
+        "phpunit/phpunit": "^13.4"
+    }
+}

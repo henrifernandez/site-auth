@@ -8,8 +8,8 @@ use SiteAuth\Controladores\AuthControlador;
 use SiteAuth\Controladores\ContaControlador;
 use SiteAuth\Controladores\RecuperacaoControlador;
 use SiteAuth\Controladores\VerificacaoControlador;
-use SiteAuth\Mail\LogMailer;
 use SiteAuth\Mail\Mailer;
+use SiteAuth\Mail\MailerFabrica;
 use SiteAuth\Mail\Notificador;
 use Throwable;
 
@@ -27,7 +27,7 @@ final class App
             $config,
             $visao ?? new Visao(dirname(__DIR__) . '/templates'),
             new LimitadorTentativas(new TentativasPg($db)),
-            new Notificador($mailer ?? new LogMailer($config->producao), $config->mailApiKey),
+            new Notificador($mailer ?? MailerFabrica::criar($config), $config->mailApiKey),
         );
     }
 

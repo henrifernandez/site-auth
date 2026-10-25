@@ -25,5 +25,16 @@ if (is_file($raiz . '/vendor/autoload.php')) {
     });
 }
 
-$requisicao = SiteAuth\Request::fromGlobals();
-new SiteAuth\App()->handle($requisicao)->enviar($requisicao->method === 'HEAD');
+// O .env só existe em desenvolvimento e nunca sobrescreve variáveis do ambiente.
+SiteAuth\Env::carregarArquivo($raiz . '/.env');
+
+try {
+    $requisicao = SiteAuth\Request::fromGlobals();
+    $app = new SiteAuth\App(SiteAuth\Db::doAmbiente(), SiteAuth\Config::doAmbiente());
+    $app->handle($requisicao)->enviar($requisicao->method === 'HEAD');
+} catch (Throwable $erro) {
+    error_log(sprintf('Falha ao iniciar: %s: %s', $erro::class, $erro->getMessage()));
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "Erro interno.\n";
+}

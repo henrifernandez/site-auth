@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SiteAuth;
 
+use SiteAuth\Controladores\AuthControlador;
 use Throwable;
 
 /**
@@ -11,22 +12,62 @@ use Throwable;
  */
 final class App
 {
-    private readonly Router $roteador;
+    private readonly Servicos $servicos;
 
-    public function __construct()
+    public function __construct(private readonly Db $db, private readonly Config $config, ?Visao $visao = null)
     {
-        $this->roteador = new Router();
-        $this->roteador->adicionar('GET', '/', static fn(Request $r): Response => Response::texto("Site Auth em reforma.\n"));
+        $this->servicos = new Servicos(
+            $db,
+            $config,
+            $visao ?? new Visao(dirname(__DIR__) . '/templates'),
+            new LimitadorTentativas(new TentativasPg($db)),
+        );
     }
 
     public function handle(Request $requisicao): Response
     {
         try {
-            return $this->roteador->despachar($requisicao);
+            $sessao = Sessao::iniciar($this->servicos->sessoes, $requisicao, $this->config->confiarIpDaVercel);
+            $resposta = $this->roteador($requisicao, $sessao)->despachar($requisicao);
+            $resposta = $sessao->finalizar($resposta);
         } catch (Throwable $erro) {
-            error_log(sprintf('Erro interno: %s em %s:%d', $erro->getMessage(), $erro->getFile(), $erro->getLine()));
-
-            return Response::texto("Erro interno.\n", 500);
+            // Detalhes só no log do servidor; o usuário recebe uma página genérica.
+            error_log(sprintf('Erro interno: %s: %s em %s:%d', $erro::class, $erro->getMessage(), $erro->getFile(), $erro->getLine()));
+            $resposta = $this->paginaDeErro(500, 'Algo deu errado', Validador::ERRO_GENERICO);
         }
+
+        return $resposta;
+    }
+
+    private function roteador(Request $requisicao, Sessao $sessao): Router
+    {
+        $s = $this->servicos;
+        $auth = new AuthControlador($s, $requisicao, $sessao);
+
+        $roteador = new Router(
+            fn(Request $r): Response => $this->paginaDeErro(404, 'Página não encontrada', 'O endereço que você abriu não existe ou foi movido.'),
+            fn(Request $r, array $permitidos): Response => $this->paginaDeErro(405, 'Método não permitido', 'Esta página não aceita esse tipo de requisição.')
+                ->comCabecalho('Allow', implode(', ', $permitidos)),
+        );
+
+        $roteador->adicionar('GET', '/', $auth->inicio(...));
+        $roteador->adicionar('GET', '/entrar', $auth->entrarForm(...));
+        $roteador->adicionar('POST', '/entrar', $auth->entrar(...));
+        $roteador->adicionar('GET', '/cadastrar', $auth->cadastrarForm(...));
+        $roteador->adicionar('POST', '/cadastrar', $auth->cadastrar(...));
+        $roteador->adicionar('POST', '/sair', $auth->sair(...));
+
+        return $roteador;
+    }
+
+    private function paginaDeErro(int $status, string $titulo, string $mensagem): Response
+    {
+        try {
+            $html = $this->servicos->visao->pagina('erro', ['titulo' => $titulo, 'mensagem' => $mensagem], ['titulo' => $titulo]);
+        } catch (Throwable) {
+            return Response::texto($titulo . "\n", $status);
+        }
+
+        return Response::html($html, $status)->comCabecalho('Cache-Control', 'no-store');
     }
 }

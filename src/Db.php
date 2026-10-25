@@ -21,12 +21,8 @@ final class Db
 
     public static function doAmbiente(string $variavel = 'DATABASE_URL'): self
     {
-        $url = Env::obter($variavel);
-        if ($url === null) {
-            throw new InvalidArgumentException($variavel . ' ausente.');
-        }
-
-        return new self($url);
+        // A conexão é preguiçosa: a ausência da variável só falha quando o banco for usado.
+        return new self(Env::obter($variavel) ?? '');
     }
 
     /**
@@ -41,7 +37,7 @@ final class Db
     {
         $p = parse_url($url);
         if ($p === false || !isset($p['host']) || $p['host'] === '') {
-            throw new InvalidArgumentException('DATABASE_URL inválida.');
+            throw new InvalidArgumentException('DATABASE_URL ausente ou inválida.');
         }
         parse_str($p['query'] ?? '', $q);
 

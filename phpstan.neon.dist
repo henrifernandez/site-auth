@@ -4,6 +4,5 @@ parameters:
         - src
         - api
         - bin
-        - templates
         - router.php
         - tests

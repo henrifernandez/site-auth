@@ -11,7 +11,7 @@ namespace SiteAuth;
  * nunca é adotado (contra fixação de sessão). Os dados são JSON. A sessão só é gravada, e o cookie só é
  * enviado, quando há algo a guardar ou quando o identificador muda.
  */
-final class Sessao
+final class Sessao implements Armazem
 {
     /** Renova o "último uso" no máximo a cada tantos segundos, para não gravar a cada requisição. */
     private const int INTERVALO_TOQUE = 60;

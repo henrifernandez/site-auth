@@ -104,6 +104,6 @@ final class VisaoTest extends TestCase
         self::assertStringContainsString('<nav class="abas" aria-label="Acesso">', $html);
         self::assertStringContainsString('aria-current="page"', $html);
         self::assertStringNotContainsString('role="tablist"', $html);
-        self::assertStringContainsString('<div id="cena" aria-hidden="true"></div>', $html);
+        self::assertStringContainsString('<div id="cena" aria-hidden="true">', $html);
     }
 }

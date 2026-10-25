@@ -25,11 +25,23 @@
   </main>
 
   <aside class="marca" aria-label="Sobre o site">
-    <div id="cena" aria-hidden="true"></div>
+    <div id="cena" aria-hidden="true">
+      <svg class="cadeado-svg" viewBox="0 0 120 150" focusable="false">
+        <path d="M38 66 V46 a22 22 0 0 1 44 0 V66"/>
+        <rect x="22" y="66" width="76" height="62" rx="12"/>
+        <circle cx="60" cy="94" r="7"/>
+        <path d="M60 101 V114"/>
+        <circle class="ponto" cx="10" cy="44" r="1.8"/>
+        <circle class="ponto" cx="108" cy="26" r="1.8"/>
+        <circle class="ponto" cx="112" cy="100" r="1.5"/>
+        <circle class="ponto" cx="6" cy="108" r="1.5"/>
+      </svg>
+    </div>
     <div class="marca-texto">
       <p class="marca-titulo">Sua conta, com acesso seguro.</p>
       <p>Crie seu cadastro em menos de um minuto ou entre para continuar de onde parou.</p>
     </div>
+    <button type="button" class="pausar-cena" data-pausar-cena aria-controls="cena" data-estado="rodando" hidden>Pausar animação</button>
   </aside>
 </div>
 

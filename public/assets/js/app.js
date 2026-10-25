@@ -43,6 +43,7 @@ function configurarPopup() {
 
     function fechar() {
         sobreposicao.remove();
+        document.dispatchEvent(new CustomEvent('popup:fechado'));
         if (fundo) {
             fundo.inert = false;
         }
@@ -70,7 +71,22 @@ function configurarPopup() {
     });
 }
 
+// Primeira carga da conta depois do login: o texto de boas-vindas aparece quando o modal fecha
+// (ou logo, se não houver modal). O texto já está no HTML: a animação só o faz surgir, então nada some sem JavaScript.
+function liberarBoasVindas() {
+    if (!document.body.classList.contains('desbloqueio')) {
+        return;
+    }
+    const mostrar = () => document.body.classList.add('desbloqueio-tocando');
+    if (document.querySelector('[data-popup]')) {
+        document.addEventListener('popup:fechado', mostrar, { once: true });
+    } else {
+        mostrar();
+    }
+}
+
 configurarMostrarSenha();
 focarResumoDeErros();
 configurarPopup();
+liberarBoasVindas();
 iniciarCena(document.getElementById('cena'));

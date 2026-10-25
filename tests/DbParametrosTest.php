@@ -36,6 +36,15 @@ final class DbParametrosTest extends TestCase
         self::assertSame('pgsql:host=127.0.0.1;port=55432;dbname=siteauth_test;sslmode=prefer', $p['dsn']);
     }
 
+    public function testUrlSemSenhaParaOBancoDescartavelDoCi(): void
+    {
+        $p = Db::parametros('postgresql://postgres@localhost:5432/siteauth_test');
+
+        self::assertSame('postgres', $p['usuario']);
+        self::assertSame('', $p['senha']);
+        self::assertSame('pgsql:host=localhost;port=5432;dbname=siteauth_test;sslmode=prefer', $p['dsn']);
+    }
+
     public function testUrlInvalida(): void
     {
         $this->expectException(InvalidArgumentException::class);

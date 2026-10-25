@@ -234,7 +234,7 @@ input {
 input:focus-visible,
 a:focus-visible,
 button:focus-visible,
-[tabindex="-1"]:focus-visible {
+[tabindex="-1"]:focus {
   outline: 3px solid var(--foco);
   outline-offset: 2px;
 }
@@ -337,6 +337,14 @@ button:focus-visible,
 .rodape-form {
   margin-top: 18px;
   text-align: center;
+}
+
+/* Alvos de toque com pelo menos 24 px (WCAG 2.5.8), mesmo para links soltos */
+.rodape-form a,
+.resumo-erros li a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 4px 2px;
 }
 
 /* Área da conta */

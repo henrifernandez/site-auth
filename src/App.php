@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace SiteAuth;
 
 use SiteAuth\Controladores\AuthControlador;
+use SiteAuth\Controladores\RecuperacaoControlador;
+use SiteAuth\Mail\LogMailer;
+use SiteAuth\Mail\Mailer;
+use SiteAuth\Mail\Notificador;
 use Throwable;
 
 /**
@@ -14,13 +18,14 @@ final class App
 {
     private readonly Servicos $servicos;
 
-    public function __construct(private readonly Db $db, private readonly Config $config, ?Visao $visao = null)
+    public function __construct(private readonly Db $db, private readonly Config $config, ?Visao $visao = null, ?Mailer $mailer = null)
     {
         $this->servicos = new Servicos(
             $db,
             $config,
             $visao ?? new Visao(dirname(__DIR__) . '/templates'),
             new LimitadorTentativas(new TentativasPg($db)),
+            new Notificador($mailer ?? new LogMailer($config->producao), $config->mailApiKey),
         );
     }
 
@@ -43,6 +48,7 @@ final class App
     {
         $s = $this->servicos;
         $auth = new AuthControlador($s, $requisicao, $sessao);
+        $recuperacao = new RecuperacaoControlador($s, $requisicao, $sessao);
 
         $roteador = new Router(
             fn(Request $r): Response => $this->paginaDeErro(404, 'Página não encontrada', 'O endereço que você abriu não existe ou foi movido.'),
@@ -56,6 +62,10 @@ final class App
         $roteador->adicionar('GET', '/cadastrar', $auth->cadastrarForm(...));
         $roteador->adicionar('POST', '/cadastrar', $auth->cadastrar(...));
         $roteador->adicionar('POST', '/sair', $auth->sair(...));
+        $roteador->adicionar('GET', '/esqueci-senha', $recuperacao->esqueciForm(...));
+        $roteador->adicionar('POST', '/esqueci-senha', $recuperacao->esqueci(...));
+        $roteador->adicionar('GET', '/redefinir-senha', $recuperacao->redefinirForm(...));
+        $roteador->adicionar('POST', '/redefinir-senha', $recuperacao->redefinir(...));
 
         return $roteador;
     }

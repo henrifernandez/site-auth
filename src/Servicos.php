@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SiteAuth;
 
+use SiteAuth\Mail\Notificador;
+
 /**
  * Serviços compartilhados pelos controladores durante uma requisição.
  */
@@ -20,6 +22,7 @@ final readonly class Servicos
         public Config $config,
         public Visao $visao,
         public LimitadorTentativas $limitador,
+        public Notificador $notificador,
     ) {
         $this->usuarios = new Usuarios($db);
         $this->tokens = new TokensConta($db);

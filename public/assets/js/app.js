@@ -17,7 +17,8 @@ function configurarMostrarSenha() {
 }
 
 function focarResumoDeErros() {
-    const resumo = document.querySelector('[data-foco-erro]');
+    // Resumo de erros ou mensagem de confirmação: o foco vai para ele depois do envio.
+    const resumo = document.querySelector('[data-foco-erro], [data-foco]');
     if (resumo) {
         resumo.focus();
     }

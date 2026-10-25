@@ -184,4 +184,123 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
         self::assertSame(1, (int) $xp->evaluate('count(//*[@data-fechar-popup])'));
         self::assertSame(1, (int) $xp->evaluate('count(//h1)'), 'o título do modal é h2, então o h1 segue único');
     }
+
+    public function testCenaEDecorativaETemBotaoDePausaEscondidoAteHaverAnimacao(): void
+    {
+        foreach ($this->paginas() as $nome => $html) {
+            $xp = new DOMXPath($this->documento($html));
+
+            self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"][@aria-hidden="true"])'), "{$nome}: #cena decorativa");
+            self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"]//svg)'), "{$nome}: SVG estático dentro da cena");
+            self::assertSame(0, (int) $xp->evaluate('count(//*[@id="cena"]//*[@tabindex or self::a or self::button or self::input])'), "{$nome}: nada focável na cena");
+
+            $botao = $xp->query('//button[@data-pausar-cena]');
+            self::assertNotFalse($botao);
+            self::assertSame(1, $botao->length, "{$nome}: botão de pausa");
+            $b = $botao->item(0);
+            self::assertInstanceOf(DOMElement::class, $b);
+            self::assertTrue($b->hasAttribute('hidden'), "{$nome}: o botão só aparece quando há animação contínua");
+            self::assertSame('button', $b->getAttribute('type'));
+            self::assertSame('cena', $b->getAttribute('aria-controls'));
+            self::assertSame('Pausar animação', trim($b->textContent));
+        }
+    }
+
+    public function testNenhumScriptInlineEUmUnicoModuloLocal(): void
+    {
+        foreach ($this->paginas() as $nome => $html) {
+            $xp = new DOMXPath($this->documento($html));
+
+            $scripts = $xp->query('//script');
+            self::assertNotFalse($scripts);
+            self::assertSame(1, $scripts->length, "{$nome}: um único script");
+            $s = $scripts->item(0);
+            self::assertInstanceOf(DOMElement::class, $s);
+            self::assertSame('/assets/js/app.js', $s->getAttribute('src'), $nome);
+            self::assertSame('module', $s->getAttribute('type'), $nome);
+            self::assertSame('', trim($s->textContent), "{$nome}: script sem código inline");
+            self::assertStringNotContainsString('three', $html, "{$nome}: o three.js só é carregado por import dinâmico");
+            self::assertSame(0, preg_match('/<style|\sstyle=|\son[a-z]+=/i', $html), "{$nome}: sem CSS ou eventos inline");
+        }
+    }
+
+    public function testCenaDaContaEDecorativaESoTocaNaPrimeiraCarga(): void
+    {
+        $this->criarUsuario('maria@example.com', 'senha-atual-1');
+        $n = $this->navegador();
+        self::assertStringNotContainsString('data-desbloqueio', $n->get('/entrar')->body);
+
+        $r = $n->post('/entrar', ['email' => 'maria@example.com', 'senha' => 'senha-atual-1']);
+        self::assertSame('/conta', $r->cabecalho('Location'));
+
+        $primeira = $n->get('/conta')->body;
+        $xp = new DOMXPath($this->documento($primeira));
+        self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena-conta"][@aria-hidden="true"][@data-desbloqueio="1"])'));
+        self::assertSame(1, (int) $xp->evaluate('count(//body[contains(@class, "conta")][contains(@class, "desbloqueio")])'));
+        self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena-conta"]//svg)'), 'o SVG do cadeado aberto vem no HTML');
+        self::assertSame(1, (int) $xp->evaluate('count(//*[contains(@class, "boas-vindas")])'));
+
+        foreach (['segunda carga', 'terceira carga'] as $quando) {
+            $depois = $n->get('/conta')->body;
+            self::assertStringNotContainsString('data-desbloqueio', $depois, $quando);
+            self::assertDoesNotMatchRegularExpression('/<body class="[^"]*desbloqueio/', $depois, $quando);
+            self::assertStringContainsString('id="cena-conta"', $depois, "{$quando}: só o estado calmo");
+        }
+    }
+
+    public function testSinalDeDesbloqueioNaoSobraDeUmLoginComErro(): void
+    {
+        $this->criarUsuario('maria@example.com', 'senha-atual-1');
+        $n = $this->navegador();
+        $n->post('/entrar', ['email' => 'maria@example.com', 'senha' => 'errada-errada']);
+
+        self::assertSame(0, (int) ($this->db->um("SELECT count(*) AS n FROM sessoes WHERE dados LIKE '%desbloqueio%'")['n'] ?? 1));
+    }
+
+    public function testRecarregarComErroDeContaNaoToca(): void
+    {
+        $this->criarUsuario('maria@example.com', 'senha-atual-1');
+        $n = $this->logar('maria@example.com', 'senha-atual-1');
+        $csrf = $n->csrfDe('/conta');
+
+        $r = $n->post('/conta/nome', ['csrf' => $csrf, 'nome' => 'A']);
+
+        self::assertSame(422, $r->status);
+        self::assertStringNotContainsString('data-desbloqueio', $r->body);
+    }
+
+    public function testScriptsDaCenaNaoReagemATeclasNemCarregamNadaExterno(): void
+    {
+        $raiz = dirname(__DIR__) . '/public/assets/js/';
+        foreach (['cena.js', 'cadeado.js'] as $arquivo) {
+            $codigo = (string) file_get_contents($raiz . $arquivo);
+
+            self::assertDoesNotMatchRegularExpression('/key(down|up|press)|[\'"]input[\'"]|[\'"]beforeinput[\'"]/', $codigo, "{$arquivo}: nada reage a teclas ou a texto digitado");
+            self::assertDoesNotMatchRegularExpression('#https?://|cdn\.#i', $codigo, "{$arquivo}: sem URL externa");
+            self::assertStringNotContainsString('.focus(', $codigo, "{$arquivo}: a animação não mexe no foco");
+            self::assertStringNotContainsString('innerHTML', $codigo, $arquivo);
+        }
+
+        $cena = (string) file_get_contents($raiz . 'cena.js');
+        self::assertStringContainsString('prefers-reduced-motion', $cena);
+        self::assertStringContainsString('visibilitychange', $cena);
+        self::assertStringContainsString('import(URL_THREE)', $cena, 'three.js só por import dinâmico');
+        self::assertDoesNotMatchRegularExpression('/^import .*three/m', $cena);
+
+        $cadeado = (string) file_get_contents($raiz . 'cadeado.js');
+        self::assertStringContainsString('Math.min(300', $cadeado, 'no máximo 300 partículas');
+        self::assertStringContainsString('Math.min(window.devicePixelRatio || 1, 2)', $cadeado, 'devicePixelRatio limitado a 2');
+        self::assertStringContainsString('forceContextLoss', $cadeado);
+    }
+
+    public function testThreeVendorizadoComLicencaEOrigem(): void
+    {
+        $pasta = dirname(__DIR__) . '/public/assets/vendor/three/';
+
+        foreach (['three.module.min.js', 'three.core.min.js', 'LICENSE', 'VERSION.txt'] as $arquivo) {
+            self::assertFileExists($pasta . $arquivo);
+        }
+        self::assertStringContainsString('0.186.1', (string) file_get_contents($pasta . 'VERSION.txt'));
+        self::assertStringContainsString('MIT', (string) file_get_contents($pasta . 'LICENSE'));
+    }
 }

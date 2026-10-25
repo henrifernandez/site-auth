@@ -1,14 +1,27 @@
 <?php
 /**
- * Variáveis: $v, $csrf, $usuario (Usuario), $sessoes, $formComErro, $erros, $geral, $nomeInformado.
+ * Variáveis: $v, $csrf, $usuario (Usuario), $sessoes, $formComErro, $erros, $geral, $nomeInformado, $desbloqueio.
  */
 $errosDe = static fn(string $form): array => $formComErro === $form ? $erros : [];
 $geralDe = static fn(string $form): ?string => $formComErro === $form ? $geral : null;
 ?>
+<div class="cena-conta" id="cena-conta" aria-hidden="true"<?= $desbloqueio ? ' data-desbloqueio="1"' : '' ?>>
+  <svg class="cadeado-svg" viewBox="0 0 120 150" focusable="false">
+    <path d="M38 60 V40 a22 22 0 0 1 44 0 V50"/>
+    <rect x="22" y="66" width="76" height="62" rx="12"/>
+    <circle cx="60" cy="94" r="7"/>
+    <path d="M60 101 V114"/>
+    <circle class="ponto" cx="10" cy="48" r="1.8"/>
+    <circle class="ponto" cx="108" cy="30" r="1.8"/>
+    <circle class="ponto" cx="112" cy="104" r="1.5"/>
+    <circle class="ponto" cx="6" cy="112" r="1.5"/>
+  </svg>
+</div>
+
 <div class="cabecalho-conta">
   <div>
     <h1>Minha conta</h1>
-    <p class="sub">Olá, <?= $v->e($usuario->primeiroNome()) ?>.</p>
+    <p class="sub boas-vindas">Olá, <?= $v->e($usuario->primeiroNome()) ?>.</p>
   </div>
   <form method="post" action="/sair">
     <?= $v->csrf($csrf) ?>

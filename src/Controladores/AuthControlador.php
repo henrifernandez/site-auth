@@ -66,6 +66,8 @@ final class AuthControlador extends Controlador
 
         $this->s->limitador->limparFalhasDeLogin($email, $ip);
         $this->sessao->autenticar($usuario->id);
+        // Sinal de uso único: a primeira carga de /conta toca a animação de desbloqueio.
+        $this->sessao->definir('desbloqueio', 1);
         $this->sessao->definir('popup', $this->popup('Login realizado com sucesso!', 'Que bom ver você, ' . $usuario->primeiroNome() . '.', '/conta'));
 
         return $this->redirecionar('/conta');

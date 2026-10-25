@@ -13,7 +13,10 @@ const email = `a11y-${Date.now()}@example.com`;
 const senha = `${randomBytes(12).toString('base64url')}aA1`;
 const nome = 'Pessoa de Teste';
 
-const navegador = await chromium.launch();
+// SwiftShader dá WebGL por software no CI; sem ele a cena cai no SVG estático (também verificado abaixo).
+const navegador = await chromium.launch({
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+});
 let falhas = 0;
 
 function falhar(cenario, mensagem) {
@@ -46,6 +49,37 @@ async function exigirFoco(pagina, cenario, id) {
     }
 }
 
+// Com WebGL, o botão de pausa aparece, funciona pelo teclado e libera o canvas; sem WebGL, o SVG fica.
+async function verificarCenaDoLogin(pagina) {
+    const pausar = pagina.locator('[data-pausar-cena]');
+    try {
+        await pausar.waitFor({ state: 'visible', timeout: 6000 });
+    } catch {
+        console.log('AVISO: sem animação (WebGL indisponível neste navegador); conferindo o SVG de reserva');
+        if (!(await pagina.locator('#cena svg').isVisible())) {
+            falhar('cena do login', 'sem WebGL o SVG estático deveria estar visível');
+        }
+
+        return;
+    }
+    if ((await pagina.locator('#cena canvas').count()) !== 1) {
+        falhar('cena do login', 'deveria haver um canvas quando o botão de pausa está visível');
+    }
+    await analisar(pagina, 'entrar com a animação rodando');
+
+    await pausar.focus();
+    await pagina.keyboard.press('Enter');
+    if ((await pausar.textContent())?.trim() !== 'Retomar animação' || (await pagina.locator('#cena canvas').count()) !== 0) {
+        falhar('cena do login', 'Enter no botão deveria pausar e liberar o canvas');
+    }
+    if (!(await pagina.locator('#cena svg').isVisible())) {
+        falhar('cena do login', 'pausada, o SVG estático deveria aparecer');
+    }
+    await analisar(pagina, 'entrar com a animação pausada');
+    await pagina.keyboard.press('Enter');
+    await pagina.locator('#cena canvas').waitFor({ timeout: 6000 }).catch(() => falhar('cena do login', 'Retomar deveria recriar o canvas'));
+}
+
 async function abrir(pagina, caminho) {
     await pagina.goto(`${BASE_URL}${caminho}`, { waitUntil: 'networkidle' });
 }
@@ -57,6 +91,7 @@ async function abrir(pagina, caminho) {
 
     await abrir(pagina, '/entrar');
     await analisar(pagina, 'entrar');
+    await verificarCenaDoLogin(pagina);
 
     // "Mostrar senha" alterna o tipo do campo e o texto do botão.
     await pagina.getByRole('button', { name: 'Mostrar senha' }).click();
@@ -109,7 +144,22 @@ async function abrir(pagina, caminho) {
     await pagina.getByRole('dialog').waitFor();
     await pagina.keyboard.press('Escape');
     await pagina.waitForURL(`${BASE_URL}/conta`);
-    await analisar(pagina, 'área da conta');
+    // Primeira carga depois do login: o sinal de desbloqueio veio do servidor e o canvas é decorativo.
+    if ((await pagina.locator('#cena-conta[data-desbloqueio="1"][aria-hidden="true"]').count()) !== 1) {
+        falhar('conta: desbloqueio', 'a primeira carga depois do login deveria trazer data-desbloqueio');
+    }
+    await analisar(pagina, 'área da conta (primeira carga, durante o desbloqueio)');
+    await pagina.waitForFunction(() => !document.querySelector('#cena-conta canvas'), null, { timeout: 8000 }).catch(() => {
+        falhar('conta: desbloqueio', 'o canvas deveria sair depois de cerca de 1,2 s');
+    });
+    await analisar(pagina, 'área da conta (estado calmo, mesma página)');
+
+    // Recarregar: o sinal é de uso único, então só o estado calmo (SVG), sem animação.
+    await pagina.reload({ waitUntil: 'networkidle' });
+    if ((await pagina.locator('#cena-conta[data-desbloqueio]').count()) !== 0 || (await pagina.locator('#cena-conta canvas').count()) !== 0) {
+        falhar('conta: recarregar', 'o desbloqueio não deveria tocar de novo');
+    }
+    await analisar(pagina, 'área da conta (recarregada)');
 
     await pagina.locator('#senha-atual').fill('senha-errada');
     await pagina.locator('#senha-nova').fill('1');
@@ -119,6 +169,29 @@ async function abrir(pagina, caminho) {
 
     await pagina.goto(`${BASE_URL}/pagina-que-nao-existe`);
     await analisar(pagina, 'página 404');
+
+    await contexto.close();
+}
+
+// Movimento reduzido: nada de three.js, só o SVG estático, e o botão de pausa fica escondido.
+{
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    const pagina = await contexto.newPage();
+    const baixados = [];
+    pagina.on('request', (requisicao) => baixados.push(requisicao.url()));
+
+    await abrir(pagina, '/entrar');
+    await pagina.waitForTimeout(1500);
+    if (baixados.some((url) => url.includes('/vendor/three/'))) {
+        falhar('movimento reduzido', 'o three.js não deveria ser baixado');
+    }
+    if ((await pagina.locator('#cena canvas').count()) !== 0 || !(await pagina.locator('[data-pausar-cena]').isHidden())) {
+        falhar('movimento reduzido', 'não deveria haver canvas nem botão de pausa');
+    }
+    if (!(await pagina.locator('#cena svg').isVisible())) {
+        falhar('movimento reduzido', 'o SVG estático deveria aparecer');
+    }
+    await analisar(pagina, 'movimento reduzido: entrar');
 
     await contexto.close();
 }

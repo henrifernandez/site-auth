@@ -25,7 +25,7 @@ final class ContaControlador extends Controlador
             return $this->redirecionar('/entrar');
         }
 
-        return $this->paginaConta($usuario);
+        return $this->paginaConta($usuario, desbloqueio: $this->sessao->pegarUmaVez('desbloqueio') !== null);
     }
 
     public function alterarNome(): Response
@@ -192,7 +192,7 @@ final class ContaControlador extends Controlador
      * @param array<string, string> $erros idDoCampo => mensagem, do formulário $formComErro
      * @param array{nome?: string} $valores
      */
-    private function paginaConta(Usuario $usuario, string $formComErro = '', array $erros = [], ?string $geral = null, int $status = 200, array $valores = []): Response
+    private function paginaConta(Usuario $usuario, string $formComErro = '', array $erros = [], ?string $geral = null, int $status = 200, array $valores = [], bool $desbloqueio = false): Response
     {
         $atual = $this->sessao->hashAtual();
         $sessoes = array_map(static fn(array $s): array => [
@@ -213,6 +213,7 @@ final class ContaControlador extends Controlador
             'erros' => $erros,
             'geral' => $geral,
             'nomeInformado' => $valores['nome'] ?? $usuario->nome,
-        ], $status, 'conta');
+            'desbloqueio' => $desbloqueio,
+        ], $status, $desbloqueio ? 'conta desbloqueio' : 'conta');
     }
 }

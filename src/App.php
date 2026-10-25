@@ -43,7 +43,7 @@ final class App
             $resposta = $this->paginaDeErro(500, 'Algo deu errado', Validador::ERRO_GENERICO);
         }
 
-        return $resposta;
+        return Seguranca::aplicar($resposta, $requisicao);
     }
 
     private function roteador(Request $requisicao, Sessao $sessao): Router

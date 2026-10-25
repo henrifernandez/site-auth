@@ -1,3 +1,9 @@
+-- LEGADO: não use este arquivo.
+-- Ele criava as tabelas "users" e "sessions" da primeira versão do projeto (api.php + localStorage).
+-- Nenhuma das duas é usada hoje. O esquema atual vive em migrations/ e é aplicado com
+-- "php bin/migrar.php up". As tabelas legadas continuam no Neon, intocadas, e não são lidas nem alteradas
+-- pela aplicação nova.
+
 -- Script de inicialização do banco de dados
 -- Execute este script no Neon para criar a tabela de usuários
 

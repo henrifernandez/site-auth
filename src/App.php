@@ -6,6 +6,7 @@ namespace SiteAuth;
 
 use SiteAuth\Controladores\AuthControlador;
 use SiteAuth\Controladores\RecuperacaoControlador;
+use SiteAuth\Controladores\VerificacaoControlador;
 use SiteAuth\Mail\LogMailer;
 use SiteAuth\Mail\Mailer;
 use SiteAuth\Mail\Notificador;
@@ -49,6 +50,7 @@ final class App
         $s = $this->servicos;
         $auth = new AuthControlador($s, $requisicao, $sessao);
         $recuperacao = new RecuperacaoControlador($s, $requisicao, $sessao);
+        $verificacao = new VerificacaoControlador($s, $requisicao, $sessao);
 
         $roteador = new Router(
             fn(Request $r): Response => $this->paginaDeErro(404, 'Página não encontrada', 'O endereço que você abriu não existe ou foi movido.'),
@@ -66,6 +68,9 @@ final class App
         $roteador->adicionar('POST', '/esqueci-senha', $recuperacao->esqueci(...));
         $roteador->adicionar('GET', '/redefinir-senha', $recuperacao->redefinirForm(...));
         $roteador->adicionar('POST', '/redefinir-senha', $recuperacao->redefinir(...));
+        $roteador->adicionar('GET', '/verificar-email', $verificacao->confirmarForm(...));
+        $roteador->adicionar('POST', '/verificar-email', $verificacao->confirmar(...));
+        $roteador->adicionar('POST', '/reenviar-verificacao', $verificacao->reenviar(...));
 
         return $roteador;
     }

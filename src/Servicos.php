@@ -17,6 +17,8 @@ final readonly class Servicos
 
     public PgSessionHandler $sessoes;
 
+    public VerificacaoEmail $verificacao;
+
     public function __construct(
         public Db $db,
         public Config $config,
@@ -27,5 +29,6 @@ final readonly class Servicos
         $this->usuarios = new Usuarios($db);
         $this->tokens = new TokensConta($db);
         $this->sessoes = new PgSessionHandler($db);
+        $this->verificacao = new VerificacaoEmail($this->tokens, $config, $notificador);
     }
 }

@@ -45,10 +45,14 @@ final class Navegador
         return $this->enviar(new Request('POST', $caminho, $query, $campos, $this->cabecalhos(), $this->cookies, $this->ip, $this->https));
     }
 
-    /** Lê o token CSRF do primeiro formulário da página. */
-    public function csrfDe(string $caminho): string
+    /**
+     * Lê o token CSRF do primeiro formulário da página.
+     *
+     * @param array<string, string> $query
+     */
+    public function csrfDe(string $caminho, array $query = []): string
     {
-        $html = $this->get($caminho)->body;
+        $html = $this->get($caminho, $query)->body;
 
         return preg_match('/name="csrf" value="([0-9a-f]+)"/', $html, $m) === 1 ? $m[1] : '';
     }

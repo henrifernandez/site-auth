@@ -111,6 +111,8 @@ final class AuthControlador extends Controlador
             return $this->formCadastrar($nome, $email, ['email' => Validador::ERRO_EMAIL_EXISTE], null, 422);
         }
 
+        $this->s->verificacao->enviar($id, $nome, $email);
+
         $primeiro = explode(' ', $nome)[0];
         $this->sessao->definir('popup', $this->popup('Cadastrado com sucesso!', 'Sua conta foi criada, ' . $primeiro . '. Agora é só entrar.', '/entrar'));
 

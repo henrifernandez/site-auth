@@ -4,21 +4,8 @@ declare(strict_types=1);
 
 namespace SiteAuth\Tests;
 
-use SiteAuth\App;
-use SiteAuth\Config;
-
-final class AuthFluxoTest extends BancoTestCase
+final class AuthFluxoTest extends AppBancoTestCase
 {
-    private function app(): App
-    {
-        return new App($this->db, new Config(appUrl: 'http://localhost:8081'));
-    }
-
-    private function navegador(string $ip = '203.0.113.10'): Navegador
-    {
-        return new Navegador($this->app(), $ip);
-    }
-
     /** @return array{nome: string, email: string, senha: string} */
     private function dadosDeCadastro(string $email = 'maria@example.com'): array
     {

@@ -9,6 +9,20 @@ namespace SiteAuth\Mail;
  */
 final class Emails
 {
+    public static function verificarEmail(string $nome, string $para, string $link): Email
+    {
+        $texto = "Olá, {$nome}.\n\n"
+            . "Para confirmar que este endereço de e-mail é seu, abra o link abaixo. Ele vale por 24 horas:\n\n{$link}\n\n"
+            . "Se você não criou uma conta, ignore este e-mail.\n";
+
+        $html = '<p>Olá, ' . self::e($nome) . '.</p>'
+            . '<p>Para confirmar que este endereço de e-mail é seu, use o link abaixo. Ele vale por 24 horas.</p>'
+            . '<p><a href="' . self::e($link) . '">Confirmar meu e-mail</a></p>'
+            . '<p>Se você não criou uma conta, ignore este e-mail.</p>';
+
+        return new Email($para, 'Confirme seu e-mail', $texto, $html);
+    }
+
     public static function recuperarSenha(string $nome, string $para, string $link): Email
     {
         $texto = "Olá, {$nome}.\n\n"

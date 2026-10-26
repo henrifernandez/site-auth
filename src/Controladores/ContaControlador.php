@@ -213,7 +213,6 @@ final class ContaControlador extends Controlador
             'erros' => $erros,
             'geral' => $geral,
             'nomeInformado' => $valores['nome'] ?? $usuario->nome,
-            'desbloqueio' => $desbloqueio,
         ], $status, $desbloqueio ? 'conta desbloqueio' : 'conta');
     }
 }

@@ -61,11 +61,15 @@ body {
   justify-content: flex-end;
 }
 
-/* Gancho da animação (fase 2): cobre a coluna, atrás do texto. */
+/* Cena (fechadura de anéis): o filho flexível da coluna de marca. Ocupa todo o espaço acima do texto
+   (as margens negativas anulam o padding da coluna, que fica só no texto) e deixa 24px de folga. */
 #cena {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 0;
+  flex: 1 1 0;
+  min-height: 0;
+  margin: -64px -64px 24px;
+  container-type: size;
   pointer-events: none;
 }
 
@@ -502,6 +506,11 @@ button:focus-visible,
     padding: 32px 24px;
   }
 
+  /* No celular a coluna de marca fica só com o texto. */
+  #cena {
+    display: none;
+  }
+
   .marca-titulo {
     font-size: 1.8rem;
   }
@@ -522,54 +531,64 @@ button:focus-visible,
   }
 }
 
-/* Cena do cadeado: SVG estático por padrão (sem JavaScript, sem WebGL ou com movimento reduzido);
-   o canvas do three.js entra por cima só quando há animação. */
-#cena .cadeado-svg {
+/* Cena: o SVG de reserva (sem JavaScript, sem WebGL ou com movimento reduzido) fica centralizado e
+   quadrado; o canvas do three.js entra por cima só quando há animação. */
+#cena .aneis-svg {
   position: absolute;
   left: 50%;
-  top: 12%;
-  width: clamp(120px, 34%, 230px);
-  height: auto;
-  transform: translateX(-50%);
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform: translate(-50%, -50%);
 }
 
-.cadeado-svg {
-  fill: none;
-  stroke: #7cc9ca;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+@supports (width: 1cqw) {
+  #cena .aneis-svg {
+    width: min(100cqw, 100cqh);
+    height: min(100cqw, 100cqh);
+  }
 }
 
-.cadeado-svg .ponto {
-  fill: #7cc9ca;
-  stroke: none;
-  opacity: 0.7;
+/* Área muito baixa (janela curta): o SVG ficaria pequeno demais para ter sentido. */
+@supports (container-type: size) {
+  @container (max-height: 199px) {
+    #cena .aneis-svg {
+      display: none;
+    }
+  }
 }
 
-#cena canvas,
-.cena-conta canvas {
+#cena canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   opacity: 1;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.45s ease;
 }
 
-#cena.cena-3d .cadeado-svg {
-  display: none;
+/* Com o canvas no ar o SVG fica por baixo, invisível; na saída da conta o canvas some e o SVG aparece. */
+#cena.cena-3d .aneis-svg {
+  visibility: hidden;
 }
 
-/* Na área da conta o cadeado grande da coluna de marca não aparece. */
-.conta #cena .cadeado-svg {
-  display: none;
+#cena.cena-3d.cena-saindo .aneis-svg {
+  visibility: visible;
 }
 
-@media (max-width: 820px), (max-height: 640px) {
-  #cena .cadeado-svg {
-    display: none;
+#cena.cena-saindo canvas {
+  opacity: 0;
+}
+
+/* Na conta a coluna de marca acompanha a rolagem, para a cena não sair da tela. */
+@media (min-width: 821px) and (min-height: 520px) {
+  .conta .marca {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: start;
   }
 }
 
@@ -597,39 +616,7 @@ button:focus-visible,
   outline-offset: 2px;
 }
 
-/* Cadeado pequeno no topo da área da conta */
-.cena-conta {
-  position: relative;
-  width: 160px;
-  height: 160px;
-  margin: -8px 0 4px -8px;
-}
-
-.cena-conta .cadeado-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  stroke: #0b6e70;
-}
-
-.cena-conta .cadeado-svg .ponto {
-  fill: #0f8b8d;
-}
-
-.cena-conta.cena-3d .cadeado-svg {
-  visibility: hidden;
-}
-
-.cena-conta.cena-saindo .cadeado-svg {
-  visibility: visible;
-}
-
-.cena-conta.cena-saindo canvas {
-  opacity: 0;
-}
-
-/* Boas-vindas: depois do login o texto surge enquanto o cadeado abre. */
+/* Boas-vindas: depois do login o texto surge enquanto a fechadura abre. */
 @keyframes surgir {
   from {
     opacity: 0;
@@ -645,20 +632,12 @@ button:focus-visible,
   animation: surgir 0.8s ease-out 0.3s both;
 }
 
-@media (max-width: 820px) {
-  .cena-conta {
-    width: 112px;
-    height: 112px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .desbloqueio-tocando .boas-vindas {
     animation: none;
   }
 
-  #cena canvas,
-  .cena-conta canvas {
+  #cena canvas {
     transition: none;
   }
 }

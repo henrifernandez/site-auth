@@ -26,16 +26,7 @@
 
   <aside class="marca" aria-label="Sobre o site">
     <div id="cena" aria-hidden="true">
-      <svg class="cadeado-svg" viewBox="0 0 120 150" focusable="false">
-        <path d="M38 66 V46 a22 22 0 0 1 44 0 V66"/>
-        <rect x="22" y="66" width="76" height="62" rx="12"/>
-        <circle cx="60" cy="94" r="7"/>
-        <path d="M60 101 V114"/>
-        <circle class="ponto" cx="10" cy="44" r="1.8"/>
-        <circle class="ponto" cx="108" cy="26" r="1.8"/>
-        <circle class="ponto" cx="112" cy="100" r="1.5"/>
-        <circle class="ponto" cx="6" cy="108" r="1.5"/>
-      </svg>
+      <?= $v->renderizar('cena_svg', ['variante' => in_array('conta', explode(' ', $classe), true) ? 'aberto' : 'repouso']) ?>
     </div>
     <div class="marca-texto">
       <p class="marca-titulo">Sua conta, com acesso seguro.</p>

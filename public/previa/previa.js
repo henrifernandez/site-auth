@@ -1,15 +1,14 @@
 // Prévia navegável da cena de anéis (etapa 1). Não é parte do app.
 //
-// A ligação de eventos abaixo é a mesma que o futuro cena.js vai usar: só foco, saída do campo e
+// A ligação de eventos abaixo é a mesma que o cena.js do app usa: só foco, saída do campo e
 // envio do formulário. Nada reage a teclas nem ao que se digita. O resto é o painel de controle.
 
 import { ESTADOS } from '/assets/js/aneis-pose.js';
 
 const URL_THREE = '/assets/vendor/three/three.module.min.js';
 const URL_ANEIS = '/assets/js/aneis.js';
-const URL_CADEADO = '/assets/js/cadeado.js';
-const ALTURA_MINIMA = 200; // abaixo disso a coluna de marca fica sem cena, como hoje
-const FOLGA_DO_TEXTO = 24;
+const LARGURA_MINIMA = 300; // abaixo disso (ou de 260 de altura) a coluna fica só com o SVG, como no app
+const ALTURA_MINIMA = 260;
 const ESPERA_SAIDA = 250; // ms entre sair de um campo e voltar ao repouso
 const PASSO_QUADRO = 1 / 60;
 const LIVRES = ['repouso', 'identidade', 'segredo']; // estados em que o foco dos campos manda
@@ -38,7 +37,6 @@ function estadoDaCarga() {
 
 const S = {
     estado: estadoDaCarga(),
-    versao: 'nova', // nova | anterior
     svg: movimentoReduzido.matches,
     modo: parametros.get('relogio') === 'manual' ? 'manual' : 'real', // ?relogio=manual abre com o relógio parado em 0
     T: 0, // tempo atual, em segundos
@@ -90,19 +88,14 @@ function temWebGL() {
     }
 }
 
-// Área da cena: o espaço livre acima do texto da coluna de marca (como no cena.js atual).
+// Área da cena: o próprio #cena, dimensionado pelo CSS do app (filho flexível da coluna de marca).
 
-function ajustarArea() {
-    const livre = marca.querySelector('.marca-texto').getBoundingClientRect().top - marca.getBoundingClientRect().top - FOLGA_DO_TEXTO;
-    cena.style.setProperty('bottom', 'auto');
-    cena.style.setProperty('height', `${Math.max(0, Math.floor(livre))}px`);
-
-    return livre;
+function areaSuficiente() {
+    return cena.clientWidth >= LARGURA_MINIMA && cena.clientHeight >= ALTURA_MINIMA;
 }
 
 function dimensionar() {
-    const livre = ajustarArea();
-    const pequena = livre < ALTURA_MINIMA;
+    const pequena = !areaSuficiente();
     if (S.cena3d) {
         S.cena3d.canvas.hidden = pequena;
         if (!pequena) {
@@ -116,13 +109,13 @@ function dimensionar() {
 
 function mostrarSvg() {
     const aberto = S.estado === 'liberado' || S.estado === 'aberto';
-    const area = cena.clientHeight >= ALTURA_MINIMA;
+    const area = cena.clientHeight >= 200; // o CSS esconde o SVG abaixo disso
     // SVG não tem a propriedade hidden: o atributo é que vale.
     cena.querySelector('.aneis-svg-repouso').toggleAttribute('hidden', !(S.svg && area && !aberto));
     cena.querySelector('.aneis-svg-aberto').toggleAttribute('hidden', !(S.svg && area && aberto));
 }
 
-// Cena (nova ou anterior)
+// Cena
 
 function desmontar() {
     S.geracao++;
@@ -131,30 +124,6 @@ function desmontar() {
         S.cena3d = null;
     }
     cena.classList.remove('cena-3d');
-}
-
-/** Cena anterior (cadeado.js): mapa aproximado dos sete estados para os gestos que ela conhece. */
-function aplicarNaAnterior(c, estado) {
-    switch (estado) {
-        case 'segredo':
-        case 'verificando':
-            c.fechar();
-            break;
-        case 'erro':
-            c.sacudir();
-            break;
-        case 'liberado':
-        case 'aberto':
-            c.desbloquear(() => {
-                if (S.estado === 'liberado') {
-                    S.estado = 'aberto';
-                    atualizarPainel();
-                }
-            });
-            break;
-        default:
-            c.repousar();
-    }
 }
 
 async function montar() {
@@ -178,26 +147,18 @@ async function montar() {
     }
     try {
         S.THREE ??= await import(URL_THREE);
-        const nova = S.versao === 'nova';
-        const modulo = await import(nova ? URL_ANEIS : URL_CADEADO);
+        const modulo = await import(URL_ANEIS);
         if (minha !== S.geracao) {
             return;
         }
         const tempo = tempoAtual();
-        let c;
-        if (nova) {
-            // Se o relógio já andou, a linha do tempo nasce em repouso e o estado atual entra em T.
-            const recomecar = tempo > 0.05 && S.estado !== 'repouso';
-            c = modulo.criarAneis(S.THREE, cena, { inicial: recomecar ? 'repouso' : S.estado, parallax: true });
-            c.aoTerminar(aoTerminar);
-            c.quadro(tempo);
-            if (recomecar) {
-                c.definirEstado(S.estado, tempo);
-            }
-        } else {
-            c = modulo.criarCadeado(S.THREE, cena, { tema: 'escuro', particulas: 160 });
-            c.quadro(tempo);
-            aplicarNaAnterior(c, S.estado);
+        // Se o relógio já andou, a linha do tempo nasce em repouso e o estado atual entra em T.
+        const recomecar = tempo > 0.05 && S.estado !== 'repouso';
+        const c = modulo.criarAneis(S.THREE, cena, { inicial: recomecar ? 'repouso' : S.estado, parallax: true });
+        c.aoTerminar(aoTerminar);
+        c.quadro(tempo);
+        if (recomecar) {
+            c.definirEstado(S.estado, tempo);
         }
         c.canvas.addEventListener('webglcontextlost', (evento) => {
             evento.preventDefault();
@@ -313,20 +274,15 @@ function irPara(nome, { automatico = false } = {}) {
     }
     S.estado = nome;
     if (S.cena3d) {
-        if (S.versao === 'nova') {
-            S.cena3d.quadro(tempo);
-            S.cena3d.definirEstado(nome, tempo);
-        } else {
-            S.cena3d.quadro(tempo);
-            aplicarNaAnterior(S.cena3d, nome);
-        }
+        S.cena3d.quadro(tempo);
+        S.cena3d.definirEstado(nome, tempo);
     }
     atualizarPainel();
     mostrarSvg();
     desenhar(tempo);
 }
 
-// Ligação de eventos (a mesma do futuro cena.js)
+// Ligação de eventos (a mesma do cena.js)
 
 let temporizadorSaida = 0;
 
@@ -481,14 +437,12 @@ function construirPainel() {
     painel.append(linha('Relógio', ui.real, ui.manual, ui.deslizante, ui.leitura, ui.quadro));
 
     ui.larguras = [400, 520, 640].map((px) => botao(String(px), () => definirLargura(px), { 'aria-label': `Coluna de ${px} pixels` }));
-    ui.nova = botao('Nova', () => definirVersao('nova'));
-    ui.anterior = botao('Anterior', () => definirVersao('anterior'));
     ui.semWebgl = botao('Sem WebGL (SVG)', () => {
         S.svg = !S.svg;
         atualizarPainel();
         montar();
     });
-    painel.append(linha('Coluna', ...ui.larguras, no('span', { class: 'painel-rotulo', texto: 'Cena' }), ui.nova, ui.anterior, ui.semWebgl));
+    painel.append(linha('Coluna', ...ui.larguras, ui.semWebgl));
 
     if (!emConta) {
         ui.erro = botao('resultado: erro', () => {
@@ -517,15 +471,6 @@ function definirLargura(px) {
     atualizarPainel();
 }
 
-function definirVersao(versao) {
-    if (S.versao === versao) {
-        return;
-    }
-    S.versao = versao;
-    atualizarPainel();
-    montar();
-}
-
 function marcar(b, ligado) {
     b.setAttribute('aria-pressed', ligado ? 'true' : 'false');
 }
@@ -535,8 +480,6 @@ function atualizarPainel() {
     marcar(ui.real, S.modo === 'real');
     marcar(ui.manual, S.modo === 'manual');
     ui.larguras.forEach((b, i) => marcar(b, S.largura === [400, 520, 640][i]));
-    marcar(ui.nova, S.versao === 'nova');
-    marcar(ui.anterior, S.versao === 'anterior');
     marcar(ui.semWebgl, S.svg);
     ui.deslizante.disabled = false;
     const decorrido = S.modo === 'manual' ? Number(ui.deslizante.value) : Math.max(0, S.T - S.tBase);
@@ -553,13 +496,11 @@ function atualizarMedidas(tempo) {
         return;
     }
     S.ultimaMedida = chave;
-    const info = S.cena3d?.info?.();
+    const info = S.cena3d?.info();
     const fps = S.fps === null ? 'fps: relógio manual' : `fps: ${S.fps.toFixed(0)}`;
     const partes = [fps];
     if (info) {
         partes.push(`chamadas de desenho: ${info.chamadas}`, `triângulos: ${info.triangulos}`, `pontos: ${info.pontos}`);
-    } else if (S.cena3d) {
-        partes.push('contadores só na cena nova');
     } else {
         partes.push(S.svg ? 'SVG estático, sem WebGL' : 'cena não montada');
     }
@@ -582,6 +523,5 @@ if (S.estado === 'erro' && !emConta) {
 if (S.estado === 'erro' && !emConta && document.getElementById('resumo-erros')) {
     document.getElementById('resumo-erros').focus();
 }
-ajustarArea();
 await montar();
 atualizarLaco();

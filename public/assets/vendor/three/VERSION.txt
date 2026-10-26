@@ -14,4 +14,4 @@ SHA-256 dos arquivos baixados, antes da alteração:
 8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc  LICENSE
 
 Cópia reaproveitada do projeto irmão API-TESTE (assets/vendor/three), sem alterações adicionais.
-Usada pelo site-auth apenas na animação do cadeado, carregada por import dinâmico.
+Usada pelo site-auth apenas na cena da fechadura de anéis (public/assets/js/aneis.js), carregada por import dinâmico.

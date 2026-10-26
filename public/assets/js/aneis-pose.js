@@ -20,13 +20,18 @@ const TORCAO_ABERTO = PI / 2;
 const FENDA_ABERTO = TETA + TORCAO_ABERTO; // 0.9912 rad
 const GIRO_ABERTO = PI / 6;
 const BRILHO_ABERTO = 1.4;
+// Na abertura os anéis também se afastam no eixo (vista explodida): o interno vem para a frente.
+const Z_ABERTO = [0.3, 0.02, -0.26];
+// Respiração da luz interna do núcleo (Hz): bem abaixo de 3 pulsos por segundo.
+const PULSO_HZ = 0.22;
 
 // Caminho da ficha: spline de Catmull-Rom (uniforme, com pontas refletidas) pelos pontos abaixo.
-// Todos ficam na reta y = -0.6545x, para a ficha cruzar os anéis em TETA.
+// Todos ficam na reta y = -0.6545x, para a ficha cruzar os anéis em TETA. A ficha vem da frente
+// (z > 0) e entra no plano dos anéis antes do anel externo, para passar de fato pela fenda.
 const CAMINHO = [
-    [4.4, -2.88, 0.9],
-    [2.9, -1.9, 0.7],
-    [1.6, -1.05, 0.35],
+    [4.4, -2.88, 1.5],
+    [2.9, -1.9, 0.22],
+    [1.6, -1.05, 0],
     [0, 0, 0],
 ];
 
@@ -34,6 +39,9 @@ const CAMINHO = [
 const MISTURA = { repouso: 1.2, identidade: 0.8, segredo: 0.7, verificando: 0.9, erro: 0.35, liberado: 0.5, aberto: 0.8 };
 const DUR_ERRO = 1.9;
 const DUR_LIBERADO = 2.6;
+// Onda de luz que sai do núcleo quando ele acende (liberado): começa em 1.3 s e dura 0.8 s.
+const ONDA_INICIO = 1.3;
+const ONDA_DURACAO = 0.8;
 const VARREDURA_PERIODO = 1.6;
 const VARREDURA_JANELA = 0.5;
 
@@ -94,8 +102,11 @@ function sNoRaio(r) {
     return (a + b) / 2;
 }
 
+// A ficha para encostada na borda de fora do anel externo: meia largura do anel (0.15, v2) mais
+// meia ficha (0.15), com folga.
+const FOLGA_CONTATO = 0.32;
 const S_RAIO = RAIOS.map(sNoRaio);
-const S_CONTATO = sNoRaio(RAIOS[2] + 0.03); // a ficha para encostada no anel externo
+const S_CONTATO = sNoRaio(RAIOS[2] + FOLGA_CONTATO);
 
 export const CONST = Object.freeze({
     RAIOS,
@@ -109,24 +120,28 @@ export const CONST = Object.freeze({
     FENDA_ABERTO,
     GIRO_ABERTO,
     BRILHO_ABERTO,
+    Z_ABERTO,
+    PULSO_HZ,
     CAMINHO,
     S_RAIO,
     S_CONTATO,
     DUR_ERRO,
     DUR_LIBERADO,
+    ONDA_INICIO,
+    ONDA_DURACAO,
     VARREDURA_PERIODO,
     VARREDURA_JANELA,
-    VIDA_FRAGMENTOS: 0.8,
+    VIDA_FRAGMENTOS: 0.95,
 });
 
-// Campos misturáveis, num vetor plano: 6 por anel (fenda, inclX, inclY, escala, alinhado, vermelho),
-// depois giro, brilho e pino do núcleo, e o quanto da moldura está acesa.
-const POR_ANEL = 6;
-const I_GIRO = 18;
-const I_BRILHO = 19;
-const I_PINO = 20;
-const I_ACESA = 21;
-const N_CAMPOS = 22;
+// Campos misturáveis, num vetor plano: 7 por anel (fenda, inclX, inclY, escala, alinhado, vermelho,
+// z), depois giro, brilho e pino do núcleo, e o quanto da moldura está acesa.
+const POR_ANEL = 7;
+const I_GIRO = 3 * POR_ANEL;
+const I_BRILHO = I_GIRO + 1;
+const I_PINO = I_GIRO + 2;
+const I_ACESA = I_GIRO + 3;
+const N_CAMPOS = I_GIRO + 4;
 const PERIODOS = new Array(N_CAMPOS).fill(0);
 for (let i = 0; i < 3; i++) {
     PERIODOS[i * POR_ANEL] = DOIS_PI;
@@ -175,7 +190,7 @@ function vetorDoRepouso(t) {
     const inc = inclinacoesDoRepouso(t);
 
     return vetor(
-        fendas.map((f, i) => [f, inc[i][0], inc[i][1], 1, 0, 0]),
+        fendas.map((f, i) => [f, inc[i][0], inc[i][1], 1, 0, 0, 0]),
         0.1 * t,
         1,
         0,
@@ -188,13 +203,13 @@ const FRAG_OFF = { ativo: false, u: 0 };
 
 /** Alvo (sem mistura de entrada) de cada estado em u segundos depois do início, no relógio t. */
 function alvoDe(estado, u, t, ctx) {
-    const base = { ficha: FICHA_OFF, fragmentos: FRAG_OFF, varredura: null, terminou: null };
+    const base = { ficha: FICHA_OFF, fragmentos: FRAG_OFF, varredura: null, onda: 0, terminou: null };
     const t0 = ctx.t0;
 
     switch (estado) {
         case 'identidade': {
             const v = vetorDoRepouso(t);
-            v.splice(2 * POR_ANEL, POR_ANEL, TETA, 0, 0, 1, 1, 0);
+            v.splice(2 * POR_ANEL, POR_ANEL, TETA, 0, 0, 1, 1, 0, 0);
             v[I_BRILHO] = 1.15;
 
             return { ...base, v };
@@ -204,9 +219,9 @@ function alvoDe(estado, u, t, ctx) {
             const inc = inclinacoesDoRepouso(t0);
             const v = vetor(
                 [
-                    [TETA - 0.6, inc[0][0] * 0.3, inc[0][1] * 0.3, 1, 0.35, 0],
-                    [TETA + 0.35, inc[1][0] * 0.3, inc[1][1] * 0.3, 1, 0.6, 0],
-                    [TETA, 0, 0, 1, 1, 0],
+                    [TETA - 0.6, inc[0][0] * 0.3, inc[0][1] * 0.3, 1, 0.35, 0, 0],
+                    [TETA + 0.35, inc[1][0] * 0.3, inc[1][1] * 0.3, 1, 0.6, 0, 0],
+                    [TETA, 0, 0, 1, 1, 0, 0],
                 ],
                 0.1 * t0,
                 1.3,
@@ -219,9 +234,9 @@ function alvoDe(estado, u, t, ctx) {
         case 'verificando': {
             const v = vetor(
                 [
-                    [TETA + 0.12, 0, 0, 1, 1, 0],
-                    [TETA - 0.08, 0, 0, 1, 1, 0],
-                    [TETA, 0, 0, 1, 1, 0],
+                    [TETA + 0.12, 0, 0, 1, 1, 0, 0],
+                    [TETA - 0.08, 0, 0, 1, 1, 0, 0],
+                    [TETA, 0, 0, 1, 1, 0, 0],
                 ],
                 0.1 * t0,
                 1.3,
@@ -245,7 +260,7 @@ function alvoDe(estado, u, t, ctx) {
             return {
                 ...base,
                 v: vetor(
-                    ESCALA_ABERTO.map((e) => [FENDA_ABERTO, 0, 0, e, 1, 0]),
+                    ESCALA_ABERTO.map((e, i) => [FENDA_ABERTO, 0, 0, e, 1, 0, Z_ABERTO[i]]),
                     GIRO_ABERTO,
                     BRILHO_ABERTO,
                     1,
@@ -263,7 +278,7 @@ function alvoDoErro(u, t, ctx, base) {
     const e = Math.sin(PI * limitar((u - 0.35) / 0.9));
     const balanco = u >= 0.35 ? 0.08 * Math.exp(-4 * (u - 0.35)) * Math.sin(DOIS_PI * 2.2 * (u - 0.35)) : 0;
     const v = parado.slice();
-    v.splice(2 * POR_ANEL, POR_ANEL, TETA + 2.4 + balanco, 0, 0, 1, 0, e);
+    v.splice(2 * POR_ANEL, POR_ANEL, TETA + 2.4 + balanco, 0, 0, 1, 0, e, 0);
     v[I_GIRO] = parado[I_GIRO] + 0.1 * u;
     v[I_BRILHO] = parado[I_BRILHO] + (0.8 - parado[I_BRILHO]) * e;
     v[I_PINO] = 0;
@@ -277,8 +292,8 @@ function alvoDoErro(u, t, ctx, base) {
         ficha = {
             visivel: true,
             s: S_CONTATO,
-            glitch: 0.05 + 0.03 * Math.sin(23 * u),
-            glitchY: 0.03 * Math.cos(31 * u),
+            glitch: 0.075 + 0.03 * Math.sin(23 * u),
+            glitchY: 0.04 * Math.cos(31 * u),
             tremorX: 0.012 * Math.sin(DOIS_PI * 13 * u),
             tremorY: 0.012 * Math.cos(DOIS_PI * 17 * u),
         };
@@ -313,7 +328,7 @@ function alvoDoLiberado(u, ctx, base) {
         const abre = outBack(limitar((u - 1.35 - 0.06 * i) / 0.8));
         const fenda = TETA + DESVIO_LIBERADO[i] * (1 - a) + TORCAO_ABERTO * torcao;
 
-        return [fenda, 0.3 * inc[i][0] * (1 - a), 0.3 * inc[i][1] * (1 - a), 1 + (ESCALA_ABERTO[i] - 1) * abre, 0.4 + 0.6 * a, 0];
+        return [fenda, 0.3 * inc[i][0] * (1 - a), 0.3 * inc[i][1] * (1 - a), 1 + (ESCALA_ABERTO[i] - 1) * abre, 0.4 + 0.6 * a, 0, Z_ABERTO[i] * abre];
     });
 
     // Um pulso de brilho só, entre 1.3 e 1.9, depois o núcleo fica em BRILHO_ABERTO.
@@ -333,22 +348,26 @@ function alvoDoLiberado(u, ctx, base) {
         v,
         ficha,
         varredura: varre > 0 && varre < 1 ? TETA + DOIS_PI * varre : null,
+        onda: u > ONDA_INICIO && u < ONDA_INICIO + ONDA_DURACAO ? (u - ONDA_INICIO) / ONDA_DURACAO : 0,
         terminou: u >= DUR_LIBERADO ? 'liberado' : null,
     };
 }
 
 // Linha do tempo
 
-function paraPose(alvo, v) {
+function paraPose(alvo, v, tempo) {
     const aneis = [0, 1, 2].map((i) => {
-        const [fenda, inclX, inclY, escala, alinhado, vermelho] = v.slice(i * POR_ANEL, (i + 1) * POR_ANEL);
+        const [fenda, inclX, inclY, escala, alinhado, vermelho, z] = v.slice(i * POR_ANEL, (i + 1) * POR_ANEL);
 
-        return { fenda, inclX, inclY, escala, alinhado, vermelho };
+        return { fenda, inclX, inclY, escala, alinhado, vermelho, z };
     });
+    // Respiração contínua da luz interna (0 a 1), só função do relógio: não tem salto entre estados.
+    const pulso = 0.5 + 0.5 * Math.sin(DOIS_PI * PULSO_HZ * tempo);
 
     return {
         aneis,
-        nucleo: { giro: v[I_GIRO], brilho: v[I_BRILHO], pinoAmbar: v[I_PINO] },
+        // onda: progresso (0 a 1) da onda de luz única do liberado; 0 = sem onda.
+        nucleo: { giro: v[I_GIRO], brilho: v[I_BRILHO], pinoAmbar: v[I_PINO], pulso, onda: alvo.onda },
         ficha: { ...alvo.ficha },
         fragmentos: { ...alvo.fragmentos },
         moldura: { varredura: alvo.varredura, acesa: v[I_ACESA] },
@@ -372,17 +391,17 @@ export function criarLinhaDoTempo(inicial = 'repouso', t = 0) {
         const alvo = alvoDe(estado, u, tempo, ctx);
         const duracao = MISTURA[estado];
         if (ctx.foto && u < duracao) {
-            return paraPose(alvo, misturar(ctx.foto, alvo.v, inOutCubic(u / duracao), referencia));
+            return paraPose(alvo, misturar(ctx.foto, alvo.v, inOutCubic(u / duracao), referencia), tempo);
         }
 
-        return paraPose(alvo, alvo.v);
+        return paraPose(alvo, alvo.v, tempo);
     }
 
     function vetorEm(tempo) {
         const p = calcular(tempo);
         const v = [];
         for (const a of p.aneis) {
-            v.push(a.fenda, a.inclX, a.inclY, a.escala, a.alinhado, a.vermelho);
+            v.push(a.fenda, a.inclX, a.inclY, a.escala, a.alinhado, a.vermelho, a.z);
         }
         v.push(p.nucleo.giro, p.nucleo.brilho, p.nucleo.pinoAmbar, p.moldura.acesa);
 

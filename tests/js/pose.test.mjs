@@ -13,8 +13,10 @@ const PI = Math.PI;
 function achatar(p) {
     const campos = [];
     for (const a of p.aneis) {
-        campos.push([a.fenda, 2 * PI], [a.inclX, 0], [a.inclY, 0], [a.escala, 0], [a.alinhado, 0], [a.vermelho, 0]);
+        // z (afastamento axial da vista explodida, v2) também precisa casar no fim e não saltar.
+        campos.push([a.fenda, 2 * PI], [a.inclX, 0], [a.inclY, 0], [a.escala, 0], [a.alinhado, 0], [a.vermelho, 0], [a.z, 0]);
     }
+    // nucleo.pulso fica de fora: é função só do relógio (não do estado) e entra no teste 5.
     campos.push([p.nucleo.giro, PI / 3], [p.nucleo.brilho, 0], [p.nucleo.pinoAmbar, 0], [p.moldura.acesa, 0]);
 
     return campos;
@@ -158,6 +160,7 @@ test('5. no máximo 3 pulsos de luminância por segundo', () => {
     const brilho = [];
     const vermelho = [];
     const nucleo = [];
+    const pulso = [];
     for (let t = 0; t < 10; t += passo) {
         while (k < agenda.length && agenda[k][0] <= t) {
             tl.mudar(agenda[k][1], agenda[k][0]);
@@ -167,7 +170,10 @@ test('5. no máximo 3 pulsos de luminância por segundo', () => {
         brilho.push(p.nucleo.brilho);
         vermelho.push(Math.max(...p.aneis.map((a) => a.vermelho)));
         nucleo.push(p.nucleo.brilho + p.nucleo.pinoAmbar * 0.3);
+        pulso.push(p.nucleo.pulso);
     }
+    // A respiração da luz interna do núcleo (v2) também conta como pulso de luminância.
+    assert.ok(maximoPicosPorSegundo(pulso, passo, 0.1) <= 3, 'respiração do núcleo');
     assert.ok(maximoPicosPorSegundo(brilho, passo, 0.1) <= 3, 'brilho do núcleo');
     assert.ok(maximoPicosPorSegundo(vermelho, passo, 0.1) <= 3, 'anel vermelho');
     assert.ok(maximoPicosPorSegundo(nucleo, passo, 0.1) <= 3, 'núcleo com o ponto');

@@ -13,7 +13,7 @@ O projeto passou por uma reforma. A versão anterior tinha duas telas concorrent
 - Limite de tentativas guardado no Postgres (login, recuperação, reenvio de verificação, cadastro, senha atual).
 - Cabeçalhos de segurança e CSP sem nada inline; fonte Manrope servida localmente.
 - Acessibilidade pensada para WCAG 2.2 AA, com teste estrutural em PHP e teste com axe-core no CI.
-- Cena de cadeado em three.js na coluna de marca e animação de desbloqueio na área da conta, com SVG de reserva (veja "Animação do cadeado").
+- Cena 3D "fechadura de anéis" (three.js) na coluna de marca, com a abertura da fechadura na primeira carga da área da conta e SVG de reserva (veja "Animação da fechadura de anéis").
 
 ## Fluxo de autenticação
 
@@ -62,11 +62,12 @@ src/                     namespace SiteAuth (PSR-4)
   Migrador.php           migrações reversíveis
 templates/               HTML com escape (layout e uma página por tela)
 public/assets/           css, js, fonts e vendor/three (únicos arquivos servidos como estáticos)
+public/previa/           prévia da cena de anéis, só para desenvolvimento (fora do deploy)
 migrations/              0001_base e 0002_usuarios_verificacao, cada uma com .up.sql e .down.sql
 bin/migrar.php           up | down | status
 router.php               servidor de desenvolvimento (php -S)
 vercel.json              runtime vercel-php@0.8.0 e rotas
-tests/                   PHPUnit (unitários e de integração) e tests/a11y (axe-core)
+tests/                   PHPUnit (unitários e de integração), tests/js (pose da cena, node --test) e tests/a11y (axe-core)
 docs/legado/init.sql     script antigo (tabelas users e sessions), mantido só como referência
 ```
 
@@ -130,22 +131,58 @@ Em produção (`VERCEL_ENV=production` ou `APP_ENV=production`), o `LogMailer` r
 - Rode as migrações antes de publicar uma versão que mude o esquema.
 - O deploy funciona sem `vendor/`: `api/index.php` tem um autoloader próprio de poucas linhas. Se houver `composer.json`, o runtime roda `composer install`; não há dependências de produção.
 
-## Animação do cadeado
+## Animação da fechadura de anéis
 
-Dois lugares ganharam uma cena em three.js (wireframe, nas cores da identidade), sem mudar textos, cores nem layout das páginas:
+A coluna de marca azul-marinho tem uma cena em three.js, sem mudar textos, cores nem tipografia das páginas. A ideia: autenticar é alinhar as fendas de três anéis usinados. Uma ficha âmbar sai do lado do formulário e só chega ao núcleo de cristal pelo canal alinhado. A mesma cena vale no login, no cadastro, em esqueci/redefinir senha e na área da conta.
 
-- **Coluna de marca** (entrar, criar conta, esqueci a senha, redefinir): um cadeado flutua devagar, com partículas finas e um halo suave, e acompanha o mouse com parallax leve (só com mouse). A argola desce e o cadeado se fecha quando o campo de senha recebe o foco, e volta ao repouso quando ele perde. Se a página recarrega com erro, o cadeado dá uma sacudida curta (cerca de 400 ms) com um brilho vermelho suave que volta ao normal. Nada reage a teclas, para não revelar o tamanho da senha a quem olha a tela.
-- **Área da conta**: na primeira carga de `/conta` depois de um login, a argola sobe e abre em cerca de 1,2 s, as partículas se expandem e se dissipam e o texto de boas-vindas surge. O servidor grava um sinal de uso único na sessão no login e o consome na renderização; recarregar mostra só o cadeado aberto, calmo (um SVG, sem three.js). Se o modal "Login realizado com sucesso!" estiver aberto, a animação espera ele fechar.
+### Estados
 
-Arquivos: `public/assets/js/cena.js` (decide, carrega e cuida do ciclo de vida), `public/assets/js/cadeado.js` (a cena) e `public/assets/vendor/three/` (three.js 0.186.1, MIT, copiado do projeto irmão API-TESTE; origem e versão em `VERSION.txt`). Tudo é servido de `/assets`, sem CDN e sem script inline, então a CSP continua `script-src 'self'`.
+| Estado | Quando | O que se vê |
+| --- | --- | --- |
+| `repouso` | página aberta, nenhum campo focado | anéis desalinhados, derivando devagar; parallax leve com o mouse (só com mouse) |
+| `identidade` | foco em e-mail, usuário ou nome | o anel externo alinha e fica de frente |
+| `segredo` | foco em senha | os outros dois anéis quase alinham e tudo para de derivar |
+| `verificando` | envio do formulário | os três alinham, a ficha percorre o canal e uma varredura de luz corre pela moldura |
+| `erro` | a página recarregou com o resumo de erros | a ficha bate no anel externo e trava, o anel fica vermelho uma vez, a ficha vira fragmentos e a cena volta ao repouso (cerca de 1,9 s) |
+| `liberado` | primeira carga de `/conta` depois do login | a ficha atravessa, o núcleo acende uma vez, os anéis abrem para fora e torcem 90 graus |
+| `aberto` | `/conta` depois da abertura | porta aberta, parada |
 
-Cuidados de acessibilidade e de desempenho:
+Quem manda no estado é `public/assets/js/cena.js`, só com eventos de foco e de envio: `focusin` em campo de identificação ou de senha, `focusout` (espera 250 ms e mantém o estado se o foco ainda estiver no mesmo formulário, por exemplo no botão "Mostrar senha") e `submit` em fase de captura, sem `preventDefault`. A página de erro é reconhecida pelo `data-foco-erro` do resumo de erros. **Nada reage a teclas nem ao que se digita** (não há `keydown`, `keyup` nem `input` na cena), para não revelar o tamanho da senha a quem olha a tela.
 
-- O canvas é decorativo (`aria-hidden`), nunca recebe foco e a animação não mexe no foco do teclado. Erros e confirmações continuam sendo anunciados pelos textos da página (`role="alert"` no resumo de erros), não pela cena.
-- Com `prefers-reduced-motion`, sem WebGL (teste em `try/catch`), com falha ao carregar o módulo ou com pouco espaço (celular e janelas baixas) o three.js nem é baixado: fica o SVG estático (cadeado fechado no login, aberto na conta). Sem JavaScript, o SVG também aparece.
-- O botão "Pausar animação" / "Retomar animação" (WCAG 2.2.2) fica visível e operável por teclado enquanto houver animação contínua. Pausar libera geometrias, materiais e o renderer e mostra o SVG; a cena também para quando a aba fica oculta.
-- Nada pisca mais de 3 vezes por segundo; o brilho de erro cobre uma área pequena, com opacidade baixa, e não há flash de tela cheia. O canvas fica acima do texto da coluna de marca, nunca por baixo dele, então o contraste do texto não depende da cena.
-- `devicePixelRatio` limitado a 2, no máximo 300 partículas (usa 160 no login e 120 na conta) e carregamento do three.js por `import()` dinâmico, em tempo ocioso, depois que o formulário já está utilizável.
+### Na área da conta
+
+Aqui vale a mesma coluna de marca dos outros formulários e, a partir de 821 px de largura ela fica fixa (`position: sticky`) ao rolar a página, para a cena não sair da tela. Na primeira carga depois de um login o servidor marca o `body` com `desbloqueio` (sinal de uso único gravado na sessão no login e consumido ao renderizar `/conta`). Aí a cena nasce em `liberado`, o primeiro quadro (fechadura fechada) já aparece sob o modal "Login realizado com sucesso!" e o relógio só liga quando o modal fecha. Ao terminar, a cena espera 0,4 s, o canvas some em 0,45 s revelando o SVG da porta aberta que já está por baixo, e tudo é descartado: cerca de 3,5 s no total, por isso o botão de pausa fica escondido na conta. Sem o sinal (recarregar, voltar à página) a coluna fica com o SVG aberto e o three.js nem é baixado.
+
+### Arquivos
+
+- `public/assets/js/cena.js`: decide se há animação, carrega o three.js por `import()` dinâmico em tempo ocioso, liga os eventos e cuida do ciclo de vida.
+- `public/assets/js/aneis.js`: monta a cena em three.js (metal usinado, luz física, núcleo de cristal) e aplica a pose. Não tem relógio próprio: o tempo, em segundos, vem de fora.
+- `public/assets/js/aneis-pose.js`: a coreografia, sem three.js e sem DOM. Funções puras do tempo, testadas com `node --test tests/js`.
+- `templates/cena_svg.php`: o SVG de reserva, em duas variantes (`repouso` nas páginas de acesso, `aberto` na conta), com só atributos de apresentação.
+- `public/assets/vendor/three/`: three.js 0.186.1 (MIT, copiado do projeto irmão API-TESTE; origem e versão em `VERSION.txt`).
+
+Tudo é servido de `/assets`, sem CDN e sem script inline, então a CSP continua `script-src 'self'`.
+
+### Acessibilidade e fallback
+
+- O `#cena` é decorativo (`aria-hidden`), nada dentro dele recebe foco e a animação não mexe no foco do teclado. Erros e confirmações continuam sendo anunciados pelos textos da página (`role="alert"` no resumo de erros), não pela cena.
+- O three.js só é baixado se `#cena` tiver pelo menos 300 x 260 px, se houver WebGL (teste em `try/catch`) e se não houver `prefers-reduced-motion`. Um `ResizeObserver` acompanha o tamanho: a cena é descartada se a área ficar pequena e volta quando ela crescer.
+- Nesses casos, ou se o módulo falhar ao carregar ou o contexto WebGL for perdido, fica o SVG de reserva, que casa com a cena nos dois extremos (repouso e aberto). Sem JavaScript o SVG também aparece. Até 820 px de largura a cena inteira some e a coluna de marca fica só com o texto.
+- O botão "Pausar animação" / "Retomar animação" (WCAG 2.2.2) fica visível e operável por teclado enquanto houver animação contínua. Pausar libera renderer, geometrias, materiais e texturas e mostra o SVG; a cena também para quando a aba fica oculta e continua de onde parou.
+- Nada pisca mais de 3 vezes por segundo (teste em `tests/js`) e não há flash de tela cheia.
+- `devicePixelRatio` limitado a 1,5, `powerPreference: low-power` e carregamento do three.js depois que o formulário já está utilizável.
+
+### Prévia
+
+`public/previa/` é uma prévia navegável da cena, com painel para trocar de estado, relógio manual, largura da coluna e modo sem WebGL. É só para desenvolvimento: fica fora do deploy (`/public/previa/` no `.vercelignore`), então não existe na Vercel. Para abrir:
+
+```
+php -S localhost:8081 router.php
+# http://localhost:8081/previa/          (login)
+# http://localhost:8081/previa/conta.html  (conta; ?desbloqueio=1 toca a abertura)
+```
+
+Ela usa o `app.css` e os módulos reais; não precisa de banco.
 
 ## Segurança
 
@@ -164,6 +201,7 @@ Cuidados de acessibilidade e de desempenho:
 composer install
 composer check        # php-cs-fixer (dry-run) + phpstan nível 6 + phpunit
 composer test         # só o phpunit
+node --test tests/js  # pose da cena de anéis (sem dependências)
 ```
 
 Os testes unitários (validador, CSRF, tokens, limitador com repositório falso, roteador, e-mails, templates) rodam sem banco. Os de integração (migrações, cadastro, login, bloqueio, recuperação, verificação, conta, exclusão em cascata, sessão entre requisições, cabeçalhos) usam a variável `TEST_DATABASE_URL` e são ignorados (skipped) sem ela. **Atenção:** o esquema desse banco é apagado e recriado; a suíte recusa qualquer host que não seja local.

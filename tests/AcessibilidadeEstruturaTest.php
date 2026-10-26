@@ -191,7 +191,10 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
             $xp = new DOMXPath($this->documento($html));
 
             self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"][@aria-hidden="true"])'), "{$nome}: #cena decorativa");
-            self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"]//svg)'), "{$nome}: SVG estático dentro da cena");
+            self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"]//svg)'), "{$nome}: SVG de reserva dentro da cena");
+            $variante = str_starts_with($nome, 'conta') ? 'aberto' : 'repouso';
+            self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"]/svg[contains(@class, "aneis-svg-' . $variante . '")][@focusable="false"][not(@hidden)])'), "{$nome}: SVG {$variante}, visível sem JavaScript");
+            self::assertSame(0, (int) $xp->evaluate('count(//*[@id="cena"]//*[@style])'), "{$nome}: SVG sem style inline");
             self::assertSame(0, (int) $xp->evaluate('count(//*[@id="cena"]//*[@tabindex or self::a or self::button or self::input])'), "{$nome}: nada focável na cena");
 
             $botao = $xp->query('//button[@data-pausar-cena]');
@@ -228,23 +231,23 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
     {
         $this->criarUsuario('maria@example.com', 'senha-atual-1');
         $n = $this->navegador();
-        self::assertStringNotContainsString('data-desbloqueio', $n->get('/entrar')->body);
+        self::assertDoesNotMatchRegularExpression('/<body class="[^"]*desbloqueio/', $n->get('/entrar')->body);
 
         $r = $n->post('/entrar', ['email' => 'maria@example.com', 'senha' => 'senha-atual-1']);
         self::assertSame('/conta', $r->cabecalho('Location'));
 
         $primeira = $n->get('/conta')->body;
         $xp = new DOMXPath($this->documento($primeira));
-        self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena-conta"][@aria-hidden="true"][@data-desbloqueio="1"])'));
-        self::assertSame(1, (int) $xp->evaluate('count(//body[contains(@class, "conta")][contains(@class, "desbloqueio")])'));
-        self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena-conta"]//svg)'), 'o SVG do cadeado aberto vem no HTML');
+        self::assertSame(1, (int) $xp->evaluate('count(//body[contains(@class, "conta")][contains(@class, "desbloqueio")])'), 'o sinal vem na classe do body');
+        self::assertSame(1, (int) $xp->evaluate('count(//*[@id="cena"][@aria-hidden="true"]/svg[contains(@class, "aneis-svg-aberto")])'), 'o SVG da porta aberta vem no HTML');
+        self::assertSame(0, (int) $xp->evaluate('count(//*[@id="cena-conta"])'), 'a conta usa a mesma cena da coluna de marca');
         self::assertSame(1, (int) $xp->evaluate('count(//*[contains(@class, "boas-vindas")])'));
+        self::assertStringNotContainsString('data-desbloqueio', $primeira);
 
         foreach (['segunda carga', 'terceira carga'] as $quando) {
             $depois = $n->get('/conta')->body;
-            self::assertStringNotContainsString('data-desbloqueio', $depois, $quando);
             self::assertDoesNotMatchRegularExpression('/<body class="[^"]*desbloqueio/', $depois, $quando);
-            self::assertStringContainsString('id="cena-conta"', $depois, "{$quando}: só o estado calmo");
+            self::assertStringContainsString('aneis-svg-aberto', $depois, "{$quando}: só o estado calmo");
         }
     }
 
@@ -272,7 +275,9 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
     public function testScriptsDaCenaNaoReagemATeclasNemCarregamNadaExterno(): void
     {
         $raiz = dirname(__DIR__) . '/public/assets/js/';
-        foreach (['cena.js', 'cadeado.js'] as $arquivo) {
+        self::assertFileDoesNotExist($raiz . 'cadeado.js', 'o cadeado antigo foi substituído');
+
+        foreach (['cena.js', 'aneis.js', 'aneis-pose.js'] as $arquivo) {
             $codigo = (string) file_get_contents($raiz . $arquivo);
 
             self::assertDoesNotMatchRegularExpression('/key(down|up|press)|[\'"]input[\'"]|[\'"]beforeinput[\'"]/', $codigo, "{$arquivo}: nada reage a teclas ou a texto digitado");
@@ -282,15 +287,26 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
         }
 
         $cena = (string) file_get_contents($raiz . 'cena.js');
-        self::assertStringContainsString('prefers-reduced-motion', $cena);
-        self::assertStringContainsString('visibilitychange', $cena);
+        foreach (['prefers-reduced-motion', 'visibilitychange', 'ResizeObserver', 'pageshow', "'focusin'", "'focusout'", "'submit'", 'data-foco-erro', 'popup:fechado'] as $trecho) {
+            self::assertStringContainsString($trecho, $cena);
+        }
         self::assertStringContainsString('import(URL_THREE)', $cena, 'three.js só por import dinâmico');
         self::assertDoesNotMatchRegularExpression('/^import .*three/m', $cena);
+        self::assertDoesNotMatchRegularExpression('/^import /m', $cena, 'nenhum import estático: tudo é carregado sob demanda');
+        self::assertDoesNotMatchRegularExpression("/'submit'.{0,400}preventDefault/s", $cena, 'o envio do formulário nunca é interrompido');
+        self::assertStringContainsString('LARGURA_MINIMA = 300', $cena);
+        self::assertStringContainsString('ALTURA_MINIMA = 260', $cena);
 
-        $cadeado = (string) file_get_contents($raiz . 'cadeado.js');
-        self::assertStringContainsString('Math.min(300', $cadeado, 'no máximo 300 partículas');
-        self::assertStringContainsString('Math.min(window.devicePixelRatio || 1, 2)', $cadeado, 'devicePixelRatio limitado a 2');
-        self::assertStringContainsString('forceContextLoss', $cadeado);
+        $aneis = (string) file_get_contents($raiz . 'aneis.js');
+        self::assertStringContainsString('Math.min(window.devicePixelRatio || 1, 1.5)', $aneis, 'devicePixelRatio limitado a 1,5');
+        self::assertStringContainsString('forceContextLoss', $aneis);
+        self::assertStringContainsString("powerPreference: 'low-power'", $aneis);
+
+        // Os caminhos dos imports dinâmicos precisam existir de verdade.
+        foreach (['URL_THREE', 'URL_ANEIS'] as $constante) {
+            self::assertSame(1, preg_match("/const {$constante} = '([^']+)';/", $cena, $m), $constante);
+            self::assertFileExists($raiz . $m[1], $constante);
+        }
     }
 
     public function testThreeVendorizadoComLicencaEOrigem(): void
@@ -302,5 +318,6 @@ final class AcessibilidadeEstruturaTest extends AppBancoTestCase
         }
         self::assertStringContainsString('0.186.1', (string) file_get_contents($pasta . 'VERSION.txt'));
         self::assertStringContainsString('MIT', (string) file_get_contents($pasta . 'LICENSE'));
+        self::assertStringContainsString('fechadura de anéis', (string) file_get_contents($pasta . 'VERSION.txt'));
     }
 }

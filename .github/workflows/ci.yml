@@ -95,6 +95,9 @@ jobs:
           cache: npm
           cache-dependency-path: tests/a11y/package-lock.json
 
+      - name: Testes da pose da cena de anéis (node --test)
+        run: node --test tests/js
+
       - name: Instalar Playwright e axe-core
         working-directory: tests/a11y
         run: |

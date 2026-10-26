@@ -105,5 +105,39 @@ final class VisaoTest extends TestCase
         self::assertStringContainsString('aria-current="page"', $html);
         self::assertStringNotContainsString('role="tablist"', $html);
         self::assertStringContainsString('<div id="cena" aria-hidden="true">', $html);
+        self::assertStringContainsString('aneis-svg-repouso', $html, 'as páginas de acesso trazem o SVG de reserva em repouso');
+        self::assertStringNotContainsString('aneis-svg-aberto', $html);
+    }
+
+    public function testParcialDaCenaTemUmaVarianteDeCadaVezSemCssNemScriptInline(): void
+    {
+        $v = $this->visao();
+
+        foreach (['repouso' => 'aberto', 'aberto' => 'repouso'] as $variante => $outra) {
+            $html = $v->renderizar('cena_svg', ['variante' => $variante]);
+
+            self::assertSame(1, preg_match_all('/<svg[ >]/', $html), $variante);
+            self::assertStringContainsString('aneis-svg-' . $variante, $html);
+            self::assertStringNotContainsString('aneis-svg-' . $outra, $html);
+            self::assertStringContainsString('viewBox="-345 -345 690 690"', $html);
+            self::assertDoesNotMatchRegularExpression('/<style\b|\sstyle\s*=|\son[a-z]+\s*=|<script|javascript:|\shidden\b/i', $html, $variante);
+        }
+    }
+
+    public function testLayoutEscolheAVarianteAbertaSoNaConta(): void
+    {
+        $v = $this->visao();
+        $dados = ['titulo' => 'Minha conta'];
+
+        foreach (['conta', 'conta desbloqueio'] as $classe) {
+            $html = $v->renderizar('layout', $dados + ['popup' => null, 'aviso' => null, 'classe' => $classe, 'conteudo' => '']);
+            self::assertStringContainsString('aneis-svg-aberto', $html, $classe);
+            self::assertStringNotContainsString('aneis-svg-repouso', $html, $classe);
+        }
+        foreach (['', 'outra'] as $classe) {
+            $html = $v->renderizar('layout', $dados + ['popup' => null, 'aviso' => null, 'classe' => $classe, 'conteudo' => '']);
+            self::assertStringContainsString('aneis-svg-repouso', $html, $classe);
+            self::assertStringNotContainsString('aneis-svg-aberto', $html, $classe);
+        }
     }
 }

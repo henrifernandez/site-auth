@@ -144,19 +144,34 @@ async function abrir(pagina, caminho) {
     await pagina.getByRole('dialog').waitFor();
     await pagina.keyboard.press('Escape');
     await pagina.waitForURL(`${BASE_URL}/conta`);
-    // Primeira carga depois do login: o sinal de desbloqueio veio do servidor e o canvas é decorativo.
-    if ((await pagina.locator('#cena-conta[data-desbloqueio="1"][aria-hidden="true"]').count()) !== 1) {
-        falhar('conta: desbloqueio', 'a primeira carga depois do login deveria trazer data-desbloqueio');
+    // Primeira carga depois do login: o sinal de desbloqueio veio do servidor (classe do body) e a cena,
+    // a mesma da coluna de marca, é decorativa. O botão de pausa fica escondido (a abertura dura poucos segundos).
+    if ((await pagina.locator('body.conta.desbloqueio #cena[aria-hidden="true"]').count()) !== 1) {
+        falhar('conta: desbloqueio', 'a primeira carga depois do login deveria trazer body.desbloqueio e #cena decorativa');
+    }
+    if (!(await pagina.locator('[data-pausar-cena]').isHidden())) {
+        falhar('conta: desbloqueio', 'o botão de pausa deveria ficar escondido na conta');
     }
     await analisar(pagina, 'área da conta (primeira carga, durante o desbloqueio)');
-    await pagina.waitForFunction(() => !document.querySelector('#cena-conta canvas'), null, { timeout: 8000 }).catch(() => {
-        falhar('conta: desbloqueio', 'o canvas deveria sair depois de cerca de 1,2 s');
+    await pagina.waitForFunction(() => !document.querySelector('#cena canvas'), null, { timeout: 6000 }).catch(() => {
+        falhar('conta: desbloqueio', 'o canvas deveria sair depois de cerca de 3,5 s');
     });
+    if (!(await pagina.locator('#cena svg.aneis-svg-aberto').isVisible())) {
+        falhar('conta: desbloqueio', 'depois da abertura o SVG da porta aberta deveria ficar visível');
+    }
     await analisar(pagina, 'área da conta (estado calmo, mesma página)');
+
+    // A coluna de marca fica fixa ao rolar a conta (a partir de 821 px).
+    await pagina.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    if ((await pagina.locator('.marca').evaluate((el) => Math.round(el.getBoundingClientRect().top))) !== 0) {
+        falhar('conta: coluna fixa', 'rolada a página, a coluna de marca deveria continuar no topo da janela');
+    }
+    await pagina.evaluate(() => window.scrollTo(0, 0));
 
     // Recarregar: o sinal é de uso único, então só o estado calmo (SVG), sem animação.
     await pagina.reload({ waitUntil: 'networkidle' });
-    if ((await pagina.locator('#cena-conta[data-desbloqueio]').count()) !== 0 || (await pagina.locator('#cena-conta canvas').count()) !== 0) {
+    await pagina.waitForTimeout(1500);
+    if ((await pagina.locator('body.desbloqueio').count()) !== 0 || (await pagina.locator('#cena canvas').count()) !== 0) {
         falhar('conta: recarregar', 'o desbloqueio não deveria tocar de novo');
     }
     await analisar(pagina, 'área da conta (recarregada)');
@@ -192,6 +207,22 @@ async function abrir(pagina, caminho) {
         falhar('movimento reduzido', 'o SVG estático deveria aparecer');
     }
     await analisar(pagina, 'movimento reduzido: entrar');
+
+    // Na conta, depois do login, também nada de three.js: a coluna fica com o SVG da porta aberta.
+    await pagina.locator('#email').fill(email);
+    await pagina.locator('#senha').fill(senha);
+    await pagina.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await pagina.getByRole('dialog').waitFor();
+    await pagina.keyboard.press('Escape');
+    await pagina.waitForURL(`${BASE_URL}/conta`);
+    await pagina.waitForTimeout(1500);
+    if (baixados.some((url) => url.includes('/vendor/three/'))) {
+        falhar('movimento reduzido: conta', 'o three.js não deveria ser baixado');
+    }
+    if ((await pagina.locator('#cena canvas').count()) !== 0 || !(await pagina.locator('#cena svg.aneis-svg-aberto').isVisible())) {
+        falhar('movimento reduzido: conta', 'deveria haver só o SVG da porta aberta, sem canvas');
+    }
+    await analisar(pagina, 'movimento reduzido: conta');
 
     await contexto.close();
 }

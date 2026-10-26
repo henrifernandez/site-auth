@@ -1,18 +1,26 @@
-// Orquestra as cenas de cadeado: decide se há animação, carrega o three.js só quando vale a pena
-// (WebGL disponível, sem prefers-reduced-motion e com espaço) e cuida do ciclo de vida.
+// Orquestra a cena "fechadura de anéis": decide se há animação, carrega o three.js só quando vale a
+// pena e liga a cena aos eventos da página (foco, saída do campo, envio, erro e desbloqueio).
 //
-// Sem JavaScript, sem WebGL ou com movimento reduzido, o SVG estático que já vem no HTML continua
-// visível. Nada aqui mexe no foco do teclado nem anuncia mensagens: o texto da página faz isso.
+// A cena em si está em aneis.js (visual) e aneis-pose.js (coreografia). Aqui só se escolhe o estado.
+// Sem JavaScript, sem WebGL, com movimento reduzido ou com pouco espaço, o SVG de reserva que já
+// vem no HTML continua visível. A cena é decorativa: nada aqui mexe no foco do teclado nem anuncia
+// mensagens (o texto da página faz isso), e nada reage a teclas ou ao que se digita, para não
+// revelar o tamanho da senha a quem olha a tela.
 
 const URL_THREE = '../vendor/three/three.module.min.js';
-const URL_CADEADO = './cadeado.js';
-const ALTURA_MINIMA = 200; // abaixo disso (celular, janela baixa) a coluna de marca fica como era
-const FOLGA_DO_TEXTO = 24; // distância entre a cena e o texto da coluna de marca
+const URL_ANEIS = './aneis.js';
+const LARGURA_MINIMA = 300; // abaixo disso (celular, janela estreita ou baixa) fica só o SVG
+const ALTURA_MINIMA = 260;
+const ESPERA_SAIDA = 250; // ms entre sair de um campo e voltar ao repouso
+const ESPERA_ABERTO = 400; // ms com a porta aberta antes de o canvas sair, na conta
+const DURACAO_SAIDA = 450; // ms da transição que revela o SVG por baixo (a mesma do CSS)
+const LIVRES = ['repouso', 'identidade', 'segredo']; // estados em que o foco dos campos manda
 
 const movimentoReduzido = window.matchMedia('(prefers-reduced-motion: reduce)');
 const ponteiroFino = window.matchMedia('(hover: hover) and (pointer: fine)');
 
-let marca = null; // estado da cena do login
+let modulos = null;
+let controle = null;
 
 function temWebGL() {
     try {
@@ -21,10 +29,7 @@ function temWebGL() {
         if (!contexto) {
             return false;
         }
-        const extensao = contexto.getExtension('WEBGL_lose_context');
-        if (extensao) {
-            extensao.loseContext();
-        }
+        contexto.getExtension('WEBGL_lose_context')?.loseContext();
 
         return true;
     } catch {
@@ -40,213 +45,293 @@ function quandoOcioso(funcao) {
     }
 }
 
-/** Espaço livre acima do texto da coluna de marca, em pixels. */
-function espacoLivre(elemento) {
-    const coluna = elemento.parentElement;
-    const texto = coluna?.querySelector('.marca-texto');
-    if (!coluna || !texto) {
-        return 0;
+function espacoSuficiente(elemento) {
+    return elemento.clientWidth >= LARGURA_MINIMA && elemento.clientHeight >= ALTURA_MINIMA;
+}
+
+/** O three.js e a cena só são baixados quando alguém vai mesmo usá-los. */
+function carregarModulos() {
+    modulos ??= Promise.all([import(URL_THREE), import(URL_ANEIS)]).catch((erro) => {
+        modulos = null;
+        throw erro;
+    });
+
+    return modulos;
+}
+
+// Estado do foco
+
+function campoDaPagina(alvo) {
+    return alvo instanceof HTMLInputElement && alvo.type !== 'hidden' && alvo.form !== null && alvo.closest('.cartao') !== null;
+}
+
+/** 'segredo' para senhas, 'identidade' para e-mail ou nome, null para qualquer outro campo. */
+function estadoDoCampo(campo) {
+    const tipos = campo.autocomplete.split(/\s+/);
+    if (tipos.some((tipo) => tipo.includes('password'))) {
+        return 'segredo';
+    }
+    if (campo.type === 'email' || tipos.some((tipo) => ['username', 'email', 'name'].includes(tipo))) {
+        return 'identidade';
     }
 
-    return texto.getBoundingClientRect().top - coluna.getBoundingClientRect().top - FOLGA_DO_TEXTO;
+    return null;
 }
 
-function ajustarArea(elemento) {
-    const livre = espacoLivre(elemento);
-    elemento.style.setProperty('bottom', 'auto');
-    elemento.style.setProperty('height', `${Math.max(0, Math.floor(livre))}px`);
+function estadoDoFoco() {
+    const ativo = document.activeElement;
 
-    return livre;
+    return (campoDaPagina(ativo) ? estadoDoCampo(ativo) : null) ?? 'repouso';
 }
 
-// Cena do login: cadeado na coluna de marca
+// Controle da cena (um por página)
 
-async function ligarCenaDoLogin(elemento) {
-    const botao = document.querySelector('[data-pausar-cena]');
-    const estado = {
+function criarControle(elemento) {
+    return {
         elemento,
-        botao,
-        cadeado: null,
-        quadro: 0,
+        botao: document.querySelector('[data-pausar-cena]'),
+        emConta: document.body.classList.contains('conta'),
+        cena: null,
+        estado: 'repouso', // estado da fechadura (o de aneis-pose.js)
+        geracao: 0, // invalida montagens assíncronas que ficaram para trás
+        montando: false,
+        erroPendente: document.querySelector('[data-foco-erro]') !== null,
+        concluido: false, // na conta: a porta já abriu
+        ligado: false, // o relógio pode andar (na conta, só depois de o modal fechar)
+        agendado: false,
+        falhou: false, // sem WebGL ou contexto perdido: só o SVG
         pausadoPeloUsuario: false,
         abaOculta: document.hidden,
-        carregando: false,
-        inicioDoRelogio: null,
-        observador: null,
-        ouvintes: [],
+        relogio: 0, // segundos de cena; só avança enquanto o laço roda
+        deslocamento: null,
+        quadro: 0,
+        temporizadores: new Set(),
     };
-    marca = estado;
-
-    if (movimentoReduzido.matches || !temWebGL() || ajustarArea(elemento) < ALTURA_MINIMA) {
-        mostrarEstatico(estado);
-
-        return;
-    }
-
-    await iniciar(estado);
-
-    movimentoReduzido.addEventListener('change', () => {
-        if (movimentoReduzido.matches) {
-            parar(estado);
-        }
-    });
-    document.addEventListener('visibilitychange', () => {
-        estado.abaOculta = document.hidden;
-        atualizarLoop(estado);
-    });
-    window.addEventListener('pagehide', () => descartar(estado));
-    botao?.addEventListener('click', () => {
-        estado.pausadoPeloUsuario = !estado.pausadoPeloUsuario;
-        if (estado.pausadoPeloUsuario) {
-            descartar(estado);
-            botao.textContent = 'Retomar animação';
-            botao.dataset.estado = 'pausada';
-        } else {
-            botao.textContent = 'Pausar animação';
-            botao.dataset.estado = 'rodando';
-            iniciar(estado);
-        }
-    });
 }
 
-function mostrarEstatico(estado) {
-    estado.elemento.classList.remove('cena-3d');
-    if (!estado.pausadoPeloUsuario && estado.botao) {
-        estado.botao.hidden = true;
-    }
+function esperar(c, ms, funcao) {
+    const id = window.setTimeout(() => {
+        c.temporizadores.delete(id);
+        funcao();
+    }, ms);
+    c.temporizadores.add(id);
+
+    return id;
 }
 
-async function iniciar(estado) {
-    if (estado.cadeado || estado.carregando) {
+function permitida(c) {
+    return !movimentoReduzido.matches && !c.falhou && !c.pausadoPeloUsuario;
+}
+
+function atualizarBotao(c) {
+    if (!c.botao) {
         return;
     }
-    estado.carregando = true;
+    // Na conta a animação dura poucos segundos: o botão fica escondido.
+    const emUso = c.cena !== null || c.montando || c.pausadoPeloUsuario;
+    c.botao.hidden = c.emConta || c.falhou || movimentoReduzido.matches || !espacoSuficiente(c.elemento) || !emUso;
+}
+
+/** Monta a cena em `estado`. O relógio fica parado em 0 até `rodar` ser chamado. */
+async function montar(c, estado, { paralaxe = true } = {}) {
+    if (c.cena || c.montando || !permitida(c) || !espacoSuficiente(c.elemento)) {
+        return null;
+    }
+    c.montando = true;
+    const minha = ++c.geracao;
     try {
-        const [THREE, modulo] = await Promise.all([import(URL_THREE), import(URL_CADEADO)]);
-        if (estado.pausadoPeloUsuario || movimentoReduzido.matches) {
-            return;
+        const [THREE, aneis] = await carregarModulos();
+        if (minha !== c.geracao || !permitida(c) || !espacoSuficiente(c.elemento)) {
+            return null;
         }
 
-        const cadeado = modulo.criarCadeado(THREE, estado.elemento, { tema: 'escuro', particulas: 160 });
-        cadeado.canvas.addEventListener('webglcontextlost', (evento) => {
+        const cena = aneis.criarAneis(THREE, c.elemento, { inicial: estado, parallax: paralaxe });
+        cena.canvas.addEventListener('webglcontextlost', (evento) => {
             evento.preventDefault();
-            descartar(estado);
-            mostrarEstatico(estado);
+            if (c.cena === cena) {
+                c.falhou = true;
+                descartar(c);
+            }
         });
-        estado.cadeado = cadeado;
-        dimensionar(estado);
-        estado.elemento.classList.add('cena-3d');
-        if (estado.botao) {
-            estado.botao.hidden = false;
-        }
-        ligarEntradas(estado);
+        c.cena = cena;
+        c.estado = estado;
+        c.relogio = 0;
+        c.deslocamento = null;
+        cena.redimensionar(c.elemento.clientWidth, c.elemento.clientHeight);
+        cena.quadro(0);
+        c.elemento.classList.add('cena-3d');
+        atualizarBotao(c);
 
-        // A página recarregou com erro: uma sacudida curta, sem mexer no foco nem no texto.
-        if (document.querySelector('[data-foco-erro]')) {
-            cadeado.quadro(0);
-            cadeado.sacudir();
-        }
-        atualizarLoop(estado);
+        return cena;
     } catch {
-        // Qualquer falha (rede, WebGL, módulo) deixa o SVG estático e o formulário intactos.
-        descartar(estado);
-        mostrarEstatico(estado);
+        // Qualquer falha (rede, WebGL, módulo) deixa o SVG de reserva e o formulário intactos.
+        c.falhou = true;
+        descartar(c);
+
+        return null;
     } finally {
-        estado.carregando = false;
+        c.montando = false;
     }
 }
 
-function dimensionar(estado) {
-    const livre = ajustarArea(estado.elemento);
-    if (livre < ALTURA_MINIMA) {
-        descartar(estado);
-        mostrarEstatico(estado);
+function descartar(c) {
+    c.geracao += 1;
+    c.ligado = false;
+    parar(c);
+    for (const id of c.temporizadores) {
+        window.clearTimeout(id);
+    }
+    c.temporizadores.clear();
+    if (c.cena) {
+        c.cena.descartar();
+        c.cena = null;
+    }
+    c.elemento.classList.remove('cena-3d', 'cena-saindo');
+    atualizarBotao(c);
+}
+
+// Relógio: o tempo sempre vem de fora, em segundos de cena, e continua de onde parou.
+
+function rodar(c) {
+    const deve = c.cena && c.ligado && !c.abaOculta && !c.pausadoPeloUsuario && !movimentoReduzido.matches;
+    if (!deve) {
+        parar(c);
 
         return;
     }
-    estado.cadeado?.redimensionar(estado.elemento.clientWidth, estado.elemento.clientHeight);
+    if (c.quadro) {
+        return;
+    }
+    const passo = (ms) => {
+        c.quadro = window.requestAnimationFrame(passo);
+        c.deslocamento ??= ms / 1000 - c.relogio;
+        c.relogio = ms / 1000 - c.deslocamento;
+        c.cena?.quadro(c.relogio);
+    };
+    c.deslocamento = null;
+    c.quadro = window.requestAnimationFrame(passo);
 }
 
-function ligarEntradas(estado) {
-    const aoFocar = (evento) => {
-        if (evento.target instanceof HTMLInputElement && evento.target.type !== 'hidden' && evento.target.autocomplete.includes('password')) {
-            estado.cadeado?.fechar();
-        }
-    };
-    const aoSair = (evento) => {
-        if (evento.target instanceof HTMLInputElement && evento.target.autocomplete.includes('password')) {
-            estado.cadeado?.repousar();
-        }
-    };
-    // Só foco e saída do campo: nada reage a teclas, para não revelar o tamanho da senha.
-    const aoMoverPonteiro = (evento) => {
-        if (!ponteiroFino.matches) {
+function parar(c) {
+    if (c.quadro) {
+        window.cancelAnimationFrame(c.quadro);
+        c.quadro = 0;
+    }
+    c.deslocamento = null;
+}
+
+function irPara(c, estado) {
+    if (!c.cena) {
+        return;
+    }
+    c.estado = estado;
+    c.cena.definirEstado(estado, c.relogio);
+}
+
+// Login, cadastro e recuperação de senha
+
+async function iniciarNaMarca(c) {
+    if (!c.cena) {
+        const inicial = c.erroPendente ? 'erro' : estadoDoFoco();
+        const cena = await montar(c, inicial, { paralaxe: true });
+        if (!cena) {
             return;
         }
-        estado.cadeado?.apontar((evento.clientX / window.innerWidth) * 2 - 1, (evento.clientY / window.innerHeight) * 2 - 1);
-    };
-    // O ponteiro com cadeado em foco e senha: o campo de senha pode já estar focado ao carregar.
-    document.addEventListener('focusin', aoFocar);
-    document.addEventListener('focusout', aoSair);
-    window.addEventListener('pointermove', aoMoverPonteiro, { passive: true });
-    estado.ouvintes = [
-        ['focusin', document, aoFocar],
-        ['focusout', document, aoSair],
-        ['pointermove', window, aoMoverPonteiro],
-    ];
-
-    estado.observador = new ResizeObserver(() => dimensionar(estado));
-    estado.observador.observe(estado.elemento.parentElement);
+        c.erroPendente = false;
+        cena.aoTerminar((nome) => {
+            // A página recarregou com erro: depois da animação, a fechadura volta ao que o foco pede.
+            if (nome === 'erro') {
+                irPara(c, estadoDoFoco());
+            }
+        });
+    }
+    c.ligado = true;
+    rodar(c);
 }
 
-function atualizarLoop(estado) {
-    const deveRodar = estado.cadeado && !estado.pausadoPeloUsuario && !estado.abaOculta && !movimentoReduzido.matches;
-    if (!deveRodar) {
-        if (estado.quadro) {
-            window.cancelAnimationFrame(estado.quadro);
-            estado.quadro = 0;
+function agendar(c) {
+    if (c.agendado) {
+        return;
+    }
+    c.agendado = true;
+    quandoOcioso(() => {
+        c.agendado = false;
+        iniciarNaMarca(c);
+    });
+}
+
+function ligarEventosDosCampos(c) {
+    let temporizador = 0;
+
+    document.addEventListener('focusin', (evento) => {
+        const alvo = evento.target;
+        if (!c.cena || !campoDaPagina(alvo) || !LIVRES.includes(c.estado)) {
+            return;
         }
+        const estado = estadoDoCampo(alvo);
+        if (estado) {
+            irPara(c, estado);
+        }
+    });
 
-        return;
-    }
-    if (estado.quadro) {
-        return;
-    }
-    const passo = (agora) => {
-        estado.quadro = window.requestAnimationFrame(passo);
-        estado.inicioDoRelogio ??= agora;
-        estado.cadeado?.quadro((agora - estado.inicioDoRelogio) / 1000);
-    };
-    estado.quadro = window.requestAnimationFrame(passo);
+    document.addEventListener('focusout', (evento) => {
+        const alvo = evento.target;
+        if (!campoDaPagina(alvo)) {
+            return;
+        }
+        const formulario = alvo.form;
+        window.clearTimeout(temporizador);
+        temporizador = window.setTimeout(() => {
+            // O foco pode ter ido para outro campo ou para o botão "Mostrar senha", no mesmo formulário.
+            const ativo = document.activeElement;
+            const noMesmoForm = ativo instanceof HTMLElement && formulario.contains(ativo);
+            if (c.cena && !noMesmoForm && (c.estado === 'identidade' || c.estado === 'segredo')) {
+                irPara(c, 'repouso');
+            }
+        }, ESPERA_SAIDA);
+    });
+
+    // Fase de captura e sem preventDefault: a cena só avisa que o envio começou, o formulário segue.
+    document.addEventListener(
+        'submit',
+        (evento) => {
+            if (c.cena && evento.target instanceof HTMLFormElement && evento.target.closest('.cartao')) {
+                irPara(c, 'verificando');
+            }
+        },
+        true,
+    );
+
+    window.addEventListener(
+        'pointermove',
+        (evento) => {
+            if (c.cena && ponteiroFino.matches) {
+                c.cena.apontar((evento.clientX / window.innerWidth) * 2 - 1, (evento.clientY / window.innerHeight) * 2 - 1);
+            }
+        },
+        { passive: true },
+    );
 }
 
-function descartar(estado) {
-    if (estado.quadro) {
-        window.cancelAnimationFrame(estado.quadro);
-        estado.quadro = 0;
-    }
-    for (const [tipo, alvo, funcao] of estado.ouvintes) {
-        alvo.removeEventListener(tipo, funcao);
-    }
-    estado.ouvintes = [];
-    estado.observador?.disconnect();
-    estado.observador = null;
-    if (estado.cadeado) {
-        estado.cadeado.descartar();
-        estado.cadeado = null;
-    }
-    estado.inicioDoRelogio = null;
-    estado.elemento.classList.remove('cena-3d');
+function ligarBotaoDePausa(c) {
+    c.botao?.addEventListener('click', () => {
+        c.pausadoPeloUsuario = !c.pausadoPeloUsuario;
+        if (c.pausadoPeloUsuario) {
+            descartar(c);
+            c.botao.textContent = 'Retomar animação';
+            c.botao.dataset.estado = 'pausada';
+        } else {
+            c.botao.textContent = 'Pausar animação';
+            c.botao.dataset.estado = 'rodando';
+            iniciarNaMarca(c);
+        }
+        atualizarBotao(c);
+    });
 }
 
-function parar(estado) {
-    descartar(estado);
-    mostrarEstatico(estado);
-}
+// Área da conta: abertura da fechadura na primeira carga depois do login
 
-// Desbloqueio na área da conta
-
-function aguardarPopup() {
+function aguardarModal() {
     if (!document.querySelector('[data-popup]')) {
         return Promise.resolve();
     }
@@ -256,65 +341,109 @@ function aguardarPopup() {
     });
 }
 
-async function ligarDesbloqueio(elemento) {
-    // Só na primeira carga depois do login (o servidor marca com data-desbloqueio e consome o sinal).
-    if (elemento.dataset.desbloqueio !== '1' || movimentoReduzido.matches || !temWebGL()) {
+async function abrirNaConta(c) {
+    // O servidor marca a primeira carga com body.desbloqueio e consome o sinal. Sem ele (recarregar,
+    // voltar à página) a coluna fica com o SVG aberto, sem three.js.
+    if (!document.body.classList.contains('desbloqueio') || c.concluido) {
+        return;
+    }
+    const cena = await montar(c, 'liberado', { paralaxe: false });
+    if (!cena) {
         return;
     }
 
-    await aguardarPopup();
-
-    let cadeado = null;
-    let quadro = 0;
-    const limpar = () => {
-        window.cancelAnimationFrame(quadro);
-        cadeado?.descartar();
-        cadeado = null;
-        elemento.classList.remove('cena-3d', 'cena-saindo');
-    };
-
-    try {
-        const [THREE, modulo] = await Promise.all([import(URL_THREE), import(URL_CADEADO)]);
-        if (document.hidden) {
-            await new Promise((resolver) => document.addEventListener('visibilitychange', resolver, { once: true }));
-        }
-        cadeado = modulo.criarCadeado(THREE, elemento, { tema: 'claro', particulas: 120, raioParticulas: 0.55, abertura: 0 });
-        cadeado.redimensionar(elemento.clientWidth, elemento.clientHeight);
-        elemento.classList.add('cena-3d');
-
-        let inicio = null;
-        const passo = (agora) => {
-            inicio ??= agora;
-            cadeado.quadro((agora - inicio) / 1000);
-            quadro = window.requestAnimationFrame(passo);
-        };
-        cadeado.quadro(0);
-        cadeado.desbloquear(() => {
-            // O SVG do cadeado aberto já está embaixo; o canvas some com uma transição curta.
-            elemento.classList.add('cena-saindo');
-            window.cancelAnimationFrame(quadro);
-            window.setTimeout(limpar, 450);
-        });
-        quadro = window.requestAnimationFrame(passo);
-        window.addEventListener('pagehide', limpar, { once: true });
-    } catch {
-        limpar();
+    // O primeiro quadro (fechadura fechada) já está desenhado sob o modal; o relógio só liga depois dele.
+    await aguardarModal();
+    if (c.cena !== cena) {
+        return;
     }
+    cena.aoTerminar((nome) => {
+        if (nome !== 'liberado') {
+            return;
+        }
+        c.concluido = true;
+        esperar(c, ESPERA_ABERTO, () => {
+            // O SVG aberto já está por baixo: o canvas some e a cena é descartada por inteiro.
+            c.elemento.classList.add('cena-saindo');
+            esperar(c, DURACAO_SAIDA + 50, () => descartar(c));
+        });
+    });
+    c.ligado = true;
+    rodar(c);
+}
+
+// Ciclo de vida
+
+function observarTamanho(c) {
+    new ResizeObserver(() => {
+        if (c.emConta) {
+            if (c.cena && espacoSuficiente(c.elemento)) {
+                c.cena.redimensionar(c.elemento.clientWidth, c.elemento.clientHeight);
+            }
+
+            return;
+        }
+        if (c.cena && !espacoSuficiente(c.elemento)) {
+            descartar(c);
+        } else if (c.cena) {
+            c.cena.redimensionar(c.elemento.clientWidth, c.elemento.clientHeight);
+        } else if (!c.montando && permitida(c) && espacoSuficiente(c.elemento)) {
+            agendar(c);
+        }
+        atualizarBotao(c);
+    }).observe(c.elemento);
+}
+
+function ligarCicloDeVida(c) {
+    document.addEventListener('visibilitychange', () => {
+        c.abaOculta = document.hidden;
+        rodar(c);
+    });
+    movimentoReduzido.addEventListener('change', () => {
+        if (movimentoReduzido.matches) {
+            descartar(c);
+        }
+    });
+    window.addEventListener('pagehide', () => descartar(c));
+    // Voltar à página pelo histórico (cache de páginas): a cena foi descartada, então recomeça.
+    window.addEventListener('pageshow', (evento) => {
+        if (!evento.persisted) {
+            return;
+        }
+        c.abaOculta = document.hidden;
+        if (c.emConta) {
+            abrirNaConta(c);
+        } else {
+            iniciarNaMarca(c);
+        }
+    });
 }
 
 /** @param {HTMLElement | null} elemento contêiner #cena da coluna de marca */
 export function iniciarCena(elemento) {
-    const conta = document.getElementById('cena-conta');
-    if (conta) {
-        quandoOcioso(() => ligarDesbloqueio(conta));
+    if (!elemento || controle) {
+        return;
     }
-    if (elemento && !conta) {
-        quandoOcioso(() => ligarCenaDoLogin(elemento));
+    const c = criarControle(elemento);
+    controle = c;
+    // Com movimento reduzido ou sem WebGL nada é carregado: fica o SVG que já está no HTML.
+    if (movimentoReduzido.matches) {
+        return;
     }
-}
+    if (!temWebGL()) {
+        c.falhou = true;
 
-export function pararCena() {
-    if (marca) {
-        parar(marca);
+        return;
+    }
+
+    ligarCicloDeVida(c);
+    observarTamanho(c);
+    if (c.emConta) {
+        // Na conta quem monta a cena é o sinal de desbloqueio; sem ele não se carrega o three.js.
+        quandoOcioso(() => abrirNaConta(c));
+    } else {
+        ligarBotaoDePausa(c);
+        ligarEventosDosCampos(c);
+        // A primeira medida do ResizeObserver agenda a montagem, se #cena tiver o tamanho mínimo.
     }
 }
